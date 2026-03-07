@@ -15,7 +15,7 @@ import time
 # ================= CONFIGURAZIONE =================
 TOKEN = os.environ.get("TOKEN")
 DATABASE_URL = os.environ.get("DATABASE_URL")
-RUOLO_STAFF_ID = 1465412245264662734
+RUOLO_STAFF_ID = 1477006088791396413
 
 intents = discord.Intents.default()
 intents.members = True
@@ -282,7 +282,7 @@ async def me(interaction: discord.Interaction, azione: str):
 @app_commands.describe(quantita="Numero di messaggi da eliminare (max 100)")
 async def clear(interaction: discord.Interaction, quantita: int):
     # ID del ruolo autorizzato
-    ID_RUOLO_AUTORIZZATO = 1414902915679785031
+    ID_RUOLO_AUTORIZZATO = 1477006088791396413
     
     # Controllo se l'utente ha il ruolo richiesto
     role = interaction.guild.get_role(ID_RUOLO_AUTORIZZATO)
@@ -363,7 +363,7 @@ async def anonimo(interaction: discord.Interaction, messaggio: str, nickname: st
         )
 
         embed = discord.Embed(
-            title="🔐 █▓▒░ ＥＮＣＲＹＰＴＥＤ ＮＥＴＷＯＲＫ ░▒▓█ 🔐",
+            title="🔐 █▓▒░ RETE ANONIMA ░▒▓█ 🔐",
             description=desc_testo,
             color=discord.Color.dark_theme(),
             timestamp=datetime.datetime.now()
@@ -653,7 +653,7 @@ async def elimina_documento(interaction: discord.Interaction, cittadino: discord
     except Exception as e:
         print(f"ERRORE ELIMINAZIONE DOCUMENTO: {e}")
         await interaction.followup.send("❌ Errore tecnico durante l'eliminazione.", ephemeral=True)
-POLIZIA_ROLE_ID = 1414902965399195700
+POLIZIA_ROLE_ID = 1477011304341442591
 
 # --- FUNZIONE DI CONTROLLO POLIZIA ---
 def is_polizia(interaction: discord.Interaction):
@@ -741,7 +741,7 @@ async def pagamulta(interaction: discord.Interaction):
 )
 async def arresto(interaction: discord.Interaction, utente: discord.Member, tempo_minuti: int, motivo: str):
     # Controllo se l'utente è un poliziotto
-    if not any(role.id == 1414902965399195700 for role in interaction.user.roles):
+    if not any(role.id == 1477011304341442591 for role in interaction.user.roles):
         return await interaction.response.send_message("❌ Non hai i permessi per effettuare un arresto.", ephemeral=True)
 
     await interaction.response.defer()
@@ -1121,7 +1121,7 @@ async def pagafattura(interaction: discord.Interaction):
 
 
 
-ID_RUOLO_CONCESSIONARIO = 1414902990275612753
+ID_RUOLO_CONCESSIONARIO = 1477011871025594510
 
 @bot.tree.command(name="registra_veicolo", description="Registra la vendita e salva i dati nel database motorizzazione")
 @app_commands.checks.has_any_role(ID_RUOLO_CONCESSIONARIO)
