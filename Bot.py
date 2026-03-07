@@ -33,7 +33,6 @@ def get_db_connection():
         return None
 
 def init_db():
-def init_db():
     conn = get_db_connection()
     if not conn: 
         print("❌ Impossibile inizializzare il database: connessione fallita.")
