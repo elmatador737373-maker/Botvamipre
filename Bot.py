@@ -1736,14 +1736,30 @@ async def rimuovi_item(interaction: Interaction, utente: discord.Member, nome: s
     conn.commit(); cur.close(); conn.close()
     await interaction.followup.send(f"✅ Admin ha rimosso {quantita}x **{nome}** a {utente.mention}")
 
-@bot.tree.command(name="crea_item_shop", description="ADMIN - Crea item shop")
-async def crea_item_shop(interaction: Interaction, nome: str, descrizione: str, prezzo: int, ruolo: discord.Role = None):
-    if not interaction.user.guild_permissions.administrator: return
-    rid = str(ruolo.id) if ruolo else "None"
-    conn = get_db_connection(); cur = conn.cursor()
-    cur.execute("INSERT INTO items (name, description, price, role_required) VALUES (%s,%s,%s,%s) ON CONFLICT (name) DO UPDATE SET price=EXCLUDED.price, description=EXCLUDED.description, role_required=EXCLUDED.role_required", (nome, descrizione, prezzo, rid))
-    conn.commit(); cur.close(); conn.close()
-    await interaction.response.send_message(f"✅ Item **{nome}** creato/aggiornato nello shop.")
+@bot.tree.command(name="crea_item_shop", description="Aggiunge un oggetto allo shop")
+async def crea_item_shop(interaction: discord.Interaction, nome: str, prezzo: int, descrizione: str):
+    # QUESTA RIGA È LA CHIAVE: dice a Discord di aspettare fino a 15 minuti
+    await interaction.response.defer(ephemeral=True) 
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Logica del database
+        cur.execute("INSERT INTO items (name, price, description) VALUES (%s, %s, %s) ON CONFLICT (name) DO UPDATE SET price = EXCLUDED.price", (nome, prezzo, descrizione))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        # IMPORTANTE: Dopo il defer si usa followup.send, NON send_message
+        await interaction.followup.send(f"✅ Oggetto **{nome}** creato con successo!")
+        
+    except Exception as e:
+        print(f"Errore: {e}")
+        await interaction.followup.send(f"❌ Errore durante la creazione: {e}")
+
+
 
 @bot.tree.command(name="elimina_item_shop", description="ADMIN - Elimina definitivamente item dallo shop")
 async def elimina_item_shop(interaction: Interaction, nome: str):
