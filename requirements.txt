@@ -3,4 +3,4 @@ google-genai
 flask
 python-dotenv
 gunicorn
-
+pillow
