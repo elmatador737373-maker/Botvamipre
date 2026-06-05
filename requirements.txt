@@ -1,6 +1,6 @@
 discord.py
-google-genai
+groq
 flask
 python-dotenv
 gunicorn
-pillow
+
