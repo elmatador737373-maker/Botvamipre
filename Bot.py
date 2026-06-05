@@ -101,49 +101,50 @@ async def on_message(message):
             pass
 
         # ==========================================
-        # GENERAZIONE RISPOSTA IA
+        # GENERAZIONE RISPOSTA IA (Versione ULTRA STABILE)
         # ==========================================
         async with message.channel.typing():
             try:
-                istruzione_sistema = (
-                    f"Sei il segretario personale di <@{IL_MIO_ID_DISCORD}>. "
-                    "Sei in una conversazione continua con l'utente attuale. "
-                    "Sii formale, educato e dagli del 'Lei'. "
-                    "Ricorda all'utente che può scrivere 'stop' in qualsiasi momento per terminare la conversazione con te."
-                )
-
+                # Definiamo i contenuti e la configurazione in modo esplicito
+                testo_utente = str(clean_content)
+                
+                # Usiamo la sintassi standard e più compatibile dell'SDK
                 response = ai_client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=clean_content,
-                    config={"system_instruction": istruzione_sistema}
+                    contents=testo_utente,
+                    config={
+                        "system_instruction": f"Sei il segretario personale di <@{IL_MIO_ID_DISCORD}>. Sii formale, educato e dagli del 'Lei'."
+                    }
                 )
                 
-                risposta_ia = response.text
+                # Controllo di sicurezza sulla risposta
+                if response and hasattr(response, 'text') and response.text:
+                    risposta_ia = response.text
+                else:
+                    risposta_ia = "Mi scusi, non sono riuscito a elaborare una risposta valida in questo momento."
                 
-                # Se l'utente ha taggato TE (il capo), il bot si presenta come sostituto
+                # Gestione dei prefissi (Conversazione attiva / Segretario del capo)
                 if tagga_me:
                     risposta_finale = (
                         f"💼 *Il mio capo <@{IL_MIO_ID_DISCORD}> potrebbe essere impegnato, intanto parli con me.*\n"
                         f"*(Risponderò ai suoi messaggi successivi senza tag. Scriva 'stop' per terminare)*\n\n"
                         f"{risposta_ia}"
                     )
-                # Se è la prima volta che taggano il bot direttamente, spiega la modalità attiva
                 elif tagga_bot and conversazioni_attive[user_id] == True and message.content == clean_content: 
                     risposta_finale = (
-                        f"🤖 *Modalità conversazione attiva. Risponderò ai suoi prossimi messaggi in questa chat senza bisogno di taggarmi. Scriva 'stop' per chiudere.*\n\n"
+                        f"🤖 *Modalità conversazione attiva. Risponderò ai suoi prossimi messaggi senza bisogno di taggarmi. Scriva 'stop' per chiudere.*\n\n"
                         f"{risposta_ia}"
                     )
                 else:
-                    # Risposta normale durante la conversazione attiva senza tag
                     risposta_finale = risposta_ia
 
+                # Invio su Discord
                 await message.reply(risposta_finale)
                 
             except Exception as e:
-                print(f"Errore IA: {e}")
+                # Forza la stampa dell'errore nei log di Render, così DEVE apparire per forza
+                print(f"--- ERRORE RILEVATO DA PYTHON: {str(e)} ---")
                 await message.reply("La prego di scusarmi, ho riscontrato un problema nei miei sistemi di comunicazione.")
-
-    await bot.process_commands(message)
 
 # ==========================================
 # 5. AVVIO MULTI-THREAD
