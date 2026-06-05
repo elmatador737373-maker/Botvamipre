@@ -1,5 +1,6 @@
 discord.py
-pymongo
-dnspython
+google-genai
 flask
-psycopg2-binary
+python-dotenv
+gunicorn
+
