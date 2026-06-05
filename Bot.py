@@ -97,7 +97,7 @@ async def on_message(message):
 
                 # Sintassi ufficiale corretta per l'SDK google-genai
                 response = ai_client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-1.5-flash',,
                     contents=str(clean_content),
                     config={"system_instruction": istruzione_sistema}
                 )
