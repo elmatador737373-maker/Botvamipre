@@ -95,8 +95,8 @@ async def on_message(message):
                     "- Mantieni le risposte entro le 250 parole, evita blocchi di testo unici."
                 )
 
-                # CORREZIONE SINTASSI SDK: si usa client.generate_content e non client.models.generate_content
-                response = ai_client.generate_content(
+                # Sintassi ufficiale corretta per l'SDK google-genai
+                response = ai_client.models.generate_content(
                     model='gemini-2.5-flash',
                     contents=str(clean_content),
                     config={"system_instruction": istruzione_sistema}
