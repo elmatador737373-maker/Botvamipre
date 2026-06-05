@@ -33,7 +33,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # IMPORTANTE: Inserisci il tuo ID Utente Discord reale qui
-IL_MIO_ID_DISCORD = 123456789012345678  
+IL_MIO_ID_DISCORD = 1191824316376043580  
 
 @bot.event
 async def on_ready():
