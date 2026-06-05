@@ -35,7 +35,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ⚠️ INSERISCI IL TUO ID DISCORD REALE QUI SOTTO
-IL_MIO_ID_DISCORD = 123456789012345678  
+IL_MIO_ID_DISCORD = 1191824316376043580
 
 conversazioni_attive = {}
 
