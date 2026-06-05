@@ -35,7 +35,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ⚠️ IMPORTANTE: Metti qui il tuo ID numerico reale di Discord
-IL_MIO_ID_DISCORD = 123456789012345678  
+IL_MIO_ID_DISCORD = 1191824316376043580  
 
 # Dizionario di stato: {user_id: True/False} per ricordare chi è in chat attiva
 conversazioni_attive = {}
