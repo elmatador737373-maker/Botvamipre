@@ -1,5 +1,6 @@
 import os
 import threading
+import asyncio
 from flask import Flask
 import discord
 from discord.ext import commands
@@ -26,25 +27,29 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 GEMINI_KEY = os.getenv('GEMINI_API_KEY')
 
+# Client ufficiale Gemini SDK (Aggiornato)
 ai_client = genai.Client(api_key=GEMINI_KEY)
 
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# IMPORTANTE: Inserisci il tuo ID Utente Discord reale qui
-IL_MIO_ID_DISCORD = 1191824316376043580  
+# ⚠️ IMPORTANTE: Metti qui il tuo ID numerico reale di Discord
+IL_MIO_ID_DISCORD = 123456789012345678  
 
-# Dizionario per tenere traccia di chi ha la conversazione attiva
-# Struttura: {user_id: True}
+# Dizionario di stato: {user_id: True/False} per ricordare chi è in chat attiva
 conversazioni_attive = {}
 
 @bot.event
 async def on_ready():
-    print(f'Segretario pronto! Loggato come {bot.user.name}')
+    print(f'✨ Jarvis è online e operativo come {bot.user.name}!')
 
+# ==========================================
+# 3. GESTIONE MESSAGGI E CONVERSAZIONE CONTINUA
+# ==========================================
 @bot.event
 async def on_message(message):
+    # Evita che il bot risponda a se stesso
     if message.author == bot.user:
         return
 
@@ -53,7 +58,7 @@ async def on_message(message):
     tagga_me = any(user.id == IL_MIO_ID_DISCORD for user in message.mentions)
     in_dm = isinstance(message.channel, discord.DMChannel)
     
-    # Controlla se l'utente ha già una conversazione attiva con il bot
+    # Controlla se l'utente ha la sessione attiva
     ha_sessione_attiva = conversazioni_attive.get(user_id, False)
 
     # --------------------------------------------------------
@@ -61,95 +66,118 @@ async def on_message(message):
     # --------------------------------------------------------
     if ha_sessione_attiva and "stop" in message.content.lower():
         conversazioni_attive[user_id] = False
-        await message.reply("Certamente. Sessione terminata. Tornerò in modalità silenziosa fino al prossimo tag.")
+        await message.reply("💼 *Certamente. Sessione terminata con successo. Tornerò in modalità silenziosa fino al prossimo tag.*")
         return
 
     # ==========================================
-    # IL BOT RISPONDE SE:
-    # 1. C'è un tag (o DM)
-    # 2. L'utente è in una conversazione già attiva
+    # DETERMINA SE IL BOT DEVE RISPONDERE
     # ==========================================
     if tagga_bot or tagga_me or in_dm or ha_sessione_attiva:
         
-        # Se è il primo tag e non era attivo, attiviamo la sessione
+        # Se viene taggato il bot e la sessione non era attiva, la attiviamo ora
         if tagga_bot and not ha_sessione_attiva and not in_dm:
             conversazioni_attive[user_id] = True
             ha_sessione_attiva = True
 
-        # Puliamo il testo dai tag
+        # Pulizia del testo dai tag per non confondere l'IA
         clean_content = message.content.replace(f'<@{bot.user.id}>', '').replace(f'<@{IL_MIO_ID_DISCORD}>', '').strip()
         
+        # Se il testo è vuoto e non c'è una sessione attiva, rispondi con un messaggio di cortesia
         if not clean_content and not ha_sessione_attiva:
             if tagga_me:
-                await message.reply(f"Salve! Il mio capo <@{IL_MIO_ID_DISCORD}> potrebbe essere impegnato, intanto parli con me. (Scriva 'stop' per congedarmi)")
+                await message.reply(f"💼 Salve! Il mio capo <@{IL_MIO_ID_DISCORD}> potrebbe essere impegnato, intanto parli con me. *(Può scrivere senza taggarmi. Dica 'stop' per chiudere)*")
             else:
-                await message.reply("Desidera qualcosa? Sono a sua disposizione. (Scriva 'stop' per chiudere la chat)")
+                await message.reply("📝 Desidera qualcosa? Sono a sua completa disposizione. *(Scriva 'stop' per congedarmi)*")
             return
 
-        # Se l'utente scrive a vuoto ma la sessione è attiva, non facciamo nulla
+        # Se l'utente preme invio a vuoto durante una sessione attiva, ignoriamo
         if not clean_content:
             return
 
         # ==========================================
-        # GESTIONE SPECIALE: RIASSUNTO PER IL CAPO
-        # ==========================================
-        testo_minuscolo = message.content.lower()
-        parole_chiave = ["riassunto", "riassumi", "novità", "successo", "aggiornamento", "report"]
-        
-        if tagga_bot and message.author.id == IL_MIO_ID_DISCORD and any(parola in testo_minuscolo for parola in parole_chiave):
-            # ... (Logica del riassunto opzionale, per ora saltiamo per brevità se vuoi, altrimenti esegue)
-            pass
-
-        # ==========================================
-        # GENERAZIONE RISPOSTA IA (Versione ULTRA STABILE)
+        # ELABORAZIONE CON GEMINI (PROMPT ELEGANTE)
         # ==========================================
         async with message.channel.typing():
             try:
-                # Definiamo i contenuti e la configurazione in modo esplicito
-                testo_utente = str(clean_content)
-                
-                # Usiamo la sintassi standard e più compatibile dell'SDK
+                # Prompt di sistema raffinato (Jarvis: formale, pulito, usa grassetti ed emoji)
+                istruzione_sistema = (
+                    f"Sei Jarvis, il leggendario, efficiente e brillante segretario personale di <@{IL_MIO_ID_DISCORD}>.\n\n"
+                    "LINEE GUIDA PER IL COMPORTAMENTO:\n"
+                    "- Il tuo tono deve essere impeccabile: estremamente educato, formale (dai sempre del 'Lei' all'interlocutore), ma anche arguto e brillante.\n"
+                    "- Sei devoto al tuo Capo. Se interagisci con altri utenti, mantieni alta la sua reputazione.\n\n"
+                    "LINEE GUIDA PER LO STILE:\n"
+                    "- Cura moltissimo la formattazione di Discord: usa il **grassetto** per i concetti chiave e elenchi puntati per dividere i testi.\n"
+                    "- Usa le emoji in modo mirato e professionale (es. 💼, 📝, 📊, ✨) per rendere i messaggi visivamente attraenti.\n"
+                    "- Sii conciso e dritto al punto, evita risposte inutilmente prolisse.\n"
+                    "- Ricorda implicitamente all'utente che sta parlando in una chat continua e che può dire 'stop' quando desidera terminare."
+                )
+
+                # Chiamata all'API forzata come stringa pulita
                 response = ai_client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=testo_utente,
-                    config={
-                        "system_instruction": f"Sei il segretario personale di <@{IL_MIO_ID_DISCORD}>. Sii formale, educato e dagli del 'Lei'."
-                    }
+                    contents=str(clean_content),
+                    config={"system_instruction": istruzione_sistema}
                 )
                 
-                # Controllo di sicurezza sulla risposta
                 if response and hasattr(response, 'text') and response.text:
                     risposta_ia = response.text
                 else:
-                    risposta_ia = "Mi scusi, non sono riuscito a elaborare una risposta valida in questo momento."
-                
-                # Gestione dei prefissi (Conversazione attiva / Segretario del capo)
+                    risposta_ia = "Mi scusi, non sono riuscito a elaborare una risposta valida nei miei database."
+
+                # --------------------------------------------------------
+                # GESTIONE PREFISSI GRAFICI (Solo al primo aggancio)
+                # --------------------------------------------------------
                 if tagga_me:
                     risposta_finale = (
-                        f"💼 *Il mio capo <@{IL_MIO_ID_DISCORD}> potrebbe essere impegnato, intanto parli con me.*\n"
-                        f"*(Risponderò ai suoi messaggi successivi senza tag. Scriva 'stop' per terminare)*\n\n"
+                        f"💼 **Il mio capo <@{IL_MIO_ID_DISCORD}> potrebbe essere impegnato, intanto parli con me.**\n"
+                        f"*(Risponderò ai Suoi messaggi successivi senza bisogno di tag. Scriva 'stop' per terminare)*\n\n"
                         f"{risposta_ia}"
                     )
-                elif tagga_bot and conversazioni_attive[user_id] == True and message.content == clean_content: 
+                elif tagga_bot and conversazioni_attive[user_id] == True and message.content == f"<@{bot.user.id}> {clean_content}":
+                    # Mette l'avviso di "aggancio" solo sul primo messaggio in cui è presente il tag
                     risposta_finale = (
-                        f"🤖 *Modalità conversazione attiva. Risponderò ai suoi prossimi messaggi senza bisogno di taggarmi. Scriva 'stop' per chiudere.*\n\n"
+                        f"🤖 **Modalità conversazione attiva.**\n"
+                        f"*( Jarvis è a Sua disposizione. Risponderò senza tag. Scriva 'stop' per chiudere la sessione )*\n\n"
                         f"{risposta_ia}"
                     )
                 else:
+                    # Durante la chat continuata manda solo il testo pulito e formattato dell'IA
                     risposta_finale = risposta_ia
 
-                # Invio su Discord
-                await message.reply(risposta_finale)
+                # --------------------------------------------------------
+                # PROTEZIONE ANTI-CRASH (Spezza i messaggi oltre i 2000 caratteri)
+                # --------------------------------------------------------
+                if len(risposta_finale) > 1900:
+                    for i in range(0, len(risposta_finale), 1900):
+                        await message.reply(risposta_finale[i:i+1900])
+                else:
+                    await message.reply(risposta_finale)
                 
             except Exception as e:
-                # Forza la stampa dell'errore nei log di Render, così DEVE apparire per forza
+                # Stampa l'errore reale nella console di Render se qualcosa va storto
                 print(f"--- ERRORE RILEVATO DA PYTHON: {str(e)} ---")
-                await message.reply("La prego di scusarmi, ho riscontrato un problema nei miei sistemi di comunicazione.")
+                await message.reply("La prego di scusarmi, ho riscontrato una breve anomalia nei miei sistemi di comunicazione.")
+
+    # Elabora i comandi standard col prefisso (es: !promemoria)
+    await bot.process_commands(message)
 
 # ==========================================
-# 5. AVVIO MULTI-THREAD
+# 4. COMANDO EXTRA: PROMEMORIA
+# ==========================================
+@bot.command(name="promemoria")
+async def promemoria(ctx, tempo: int, *, motivo: str):
+    """Esempio: !promemoria 10 Controllare i file del server"""
+    await ctx.send(f"💼 Certamente Capo, ho annotato il promemoria: **'{motivo}'** tra {tempo} minuti.")
+    await asyncio.sleep(tempo * 60)
+    await ctx.send(f"🔔 {ctx.author.mention}, Le ricordo l'impegno preso: **{motivo}**.")
+
+# ==========================================
+# 5. AVVIO MULTI-THREAD (Flask + Discord)
 # ==========================================
 if __name__ == "__main__":
+    # Avvia il server Flask in background per tenere sveglio Render
     t = threading.Thread(target=run_flask)
     t.start()
+    
+    # Avvia il bot di Discord
     bot.run(DISCORD_TOKEN)
