@@ -13,7 +13,8 @@ const {
     REST,
     Routes,
     EmbedBuilder,
-    ComponentType
+    ComponentType,
+    MessageFlags
 } = require('discord.js');
 const puppeteer = require('puppeteer');
 const fs = require('fs-extra');
@@ -285,7 +286,7 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
     
-    // VERIFICA RUOLO STAFF PER I COMANDI (Aggiornato con ROLE_STAFF_ID)
+    // VERIFICA RUOLO STAFF PER I COMANDI
     const checkStaffPermission = (member) => {
         return member.roles.cache.has(process.env.ROLE_STAFF_ID) || member.permissions.has('Administrator');
     };
@@ -329,7 +330,7 @@ client.on('interactionCreate', async interaction => {
     // 2. CREAZIONE PANNELLO STAFF
     if (interaction.isChatInputCommand() && interaction.commandName === 'setup_pannello') {
         if (!checkStaffPermission(interaction.member)) {
-            return interaction.reply({ content: '❌ Non hai il ruolo Staff necessario per usare questo comando.', ephemeral: true });
+            return interaction.reply({ content: '❌ Non hai il ruolo Staff necessario per usare questo comando.', flags: [MessageFlags.Ephemeral] });
         }
 
         const embed = new EmbedBuilder()
@@ -356,7 +357,7 @@ client.on('interactionCreate', async interaction => {
             components: [new ActionRowBuilder().addComponents(button)]
         });
 
-        return interaction.reply({ content: 'Pannello Evren City inviato con successo!', ephemeral: true });
+        return interaction.reply({ content: 'Pannello Evren City inviato con successo!', flags: [MessageFlags.Ephemeral] });
     }
 
     // 3. CLICK PULSANTE -> APERTURA MODAL
@@ -379,7 +380,7 @@ client.on('interactionCreate', async interaction => {
     // 4. INVIO MODAL -> ELABORAZIONE E NOTIFICHE DM + LOG
     if (interaction.isModalSubmit() && interaction.customId === 'modal_richiesta_crew') {
         const scUsername = interaction.fields.getTextInputValue('input_sc_username').trim();
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
         // Invia Primo DM: Presa in carico
         try {
@@ -398,11 +399,18 @@ client.on('interactionCreate', async interaction => {
             const success = await queueTask(() => autoApproveUser(scUsername));
 
             if (success) {
-                // Notifica DM: Approvato
+                // Notifica DM: Approvato con invito a tornare sul link della Crew
                 try {
+                    const crewUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}`;
                     const successEmbed = new EmbedBuilder()
                         .setTitle('✅ Richiesta Approvata — Evren City RP')
-                        .setDescription(`Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\nBuon Roleplay in città! 🏙️`)
+                        .setDescription(
+                            `Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\n` +
+                            '**🎮 Cosa devi fare adesso:**\n' +
+                            `1. Torna sulla pagina della Crew cliccando qui: [Apri la Crew sul Social Club](${crewUrl})\n` +
+                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n` +
+                            'Buon Roleplay in città! 🏙️'
+                        )
                         .setColor('#2ecc71');
                     await interaction.user.send({ embeds: [successEmbed] });
                 } catch (e) {}
@@ -420,16 +428,18 @@ client.on('interactionCreate', async interaction => {
                 await sendLogMessage(logEmbed);
 
             } else {
-                // Notifica DM: Errore / Non Trovato
+                // Notifica DM: Errore / Non Trovato con promemoria sul link della Crew
                 try {
+                    const crewUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}`;
                     const failEmbed = new EmbedBuilder()
                         .setTitle('⚠️ Richiesta Non Trovata — Evren City RP')
                         .setDescription(
                             `Non siamo riusciti a trovare nessuna richiesta pendente per **${scUsername}**.\n\n` +
-                            '**Cosa devi fare adesso:**\n' +
-                            '1. Assicurati di aver inviato la richiesta dal sito Social Club o da GTA Online.\n' +
-                            '2. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n' +
-                            '3. Torna sul server e riprova.'
+                            '**⚠️ Cosa devi fare adesso:**\n' +
+                            `1. Assicurati di andare sulla pagina della nostra Crew su Rockstar Social Club ([clicca qui per aprirla](${crewUrl})) o direttamente in-game.\n` +
+                            '2. Invia la richiesta per unirti/accettare l\'invito.\n` +
+                            '3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n` +
+                            '4. Torna sul server Discord di Evren City e riprova a cliccare sul pulsante!'
                         )
                         .setColor('#e74c3c');
                     await interaction.user.send({ embeds: [failEmbed] });
@@ -457,7 +467,7 @@ client.on('interactionCreate', async interaction => {
     // 5. COMANDI STAFF (KICK, BAN, UNBAN) CON PULSANTI DI CONFERMA E LOG
     if (interaction.isChatInputCommand() && (interaction.commandName === 'kick_crew' || interaction.commandName === 'ban_crew' || interaction.commandName === 'unban_crew')) {
         if (!checkStaffPermission(interaction.member)) {
-            return interaction.reply({ content: '❌ Non possiedi il ruolo Staff necessario per eseguire questa azione.', ephemeral: true });
+            return interaction.reply({ content: '❌ Non possiedi il ruolo Staff necessario per eseguire questa azione.', flags: [MessageFlags.Ephemeral] });
         }
 
         const commandName = interaction.commandName;
@@ -506,7 +516,7 @@ client.on('interactionCreate', async interaction => {
         const response = await interaction.reply({
             embeds: [confirmEmbed],
             components: [row],
-            ephemeral: true
+            flags: [MessageFlags.Ephemeral]
         });
 
         // COLLECTOR PER I PULSANTI (Tempo limite: 30 secondi)
