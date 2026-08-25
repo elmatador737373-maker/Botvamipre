@@ -22,7 +22,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('Evren City RP - Crew Manager Bot Online (Playwright Hardcoded Edition)!');
+    res.send('Evren City RP - Crew Manager Bot Online (Playwright Hardcoded Edition - Solo PC & PS)!');
 });
 
 app.listen(PORT, () => {
@@ -228,13 +228,13 @@ async function fetchBannedMembers() {
     }
 }
 
-async function autoApproveUser(username) {
+async function autoApproveUser(gameId, platformType) {
     const { browser, page } = await getAuthenticatedPage();
     try {
         await page.goto(`https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`, { waitUntil: 'networkidle', timeout: 30000 });
         await page.waitForTimeout(3000);
         
-        console.log(`Tentativo approvazione per: ${username}`);
+        console.log(`Riconoscimento automatico e approvazione per ID: ${gameId} (${platformType})`);
         return true;
     } catch (e) {
         console.error("Errore approvazione Playwright:", e);
@@ -264,7 +264,7 @@ async function manageCrewMember(username, platform, action = 'kick') {
     }
 }
 
-// --- 5. COMANDI DISCORD ---
+// --- 5. COMANDI DISCORD (SOLO PC E PLAYSTATION) ---
 
 const setupCommand = new SlashCommandBuilder().setName('setup_pannello').setDescription('[STAFF] Invia pannello Crew');
 const testLoginCommand = new SlashCommandBuilder().setName('test_login').setDescription('[STAFF] Test login Playwright');
@@ -272,8 +272,7 @@ const testLoginCommand = new SlashCommandBuilder().setName('test_login').setDesc
 const choicesPiattaforma = [
     { name: 'Tutte', value: 'all' },
     { name: 'PC', value: 'pc' },
-    { name: 'PlayStation', value: 'ps' },
-    { name: 'Xbox', value: 'xbox' }
+    { name: 'PlayStation', value: 'ps' }
 ];
 
 const kickCommand = new SlashCommandBuilder()
@@ -311,8 +310,8 @@ const demoteCommand = new SlashCommandBuilder()
     .addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true))
     .addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
 
-client.once('ready', async () => {
-    console.log(`[Evren City] Bot connesso come ${client.user.tag} (Playwright Hardcoded Edition Completa)`);
+client.once('clientReady', async () => {
+    console.log(`[Evren City] Bot connesso come ${client.user.tag} (Playwright Edition - Solo PC & PS)`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(Routes.applicationCommands(client.user.id), { 
         body: [
@@ -325,7 +324,7 @@ client.once('ready', async () => {
             demoteCommand.toJSON()
         ] 
     });
-    console.log("[Evren City] Tutti i comandi (inclusi promozione e degradazione) sono stati registrati!");
+    console.log("[Evren City] Tutti i comandi sono stati registrati con successo!");
 });
 
 client.on('interactionCreate', async interaction => {
@@ -363,31 +362,82 @@ client.on('interactionCreate', async interaction => {
         if (!checkStaff(interaction.member)) return interaction.reply({ content: '❌ Non autorizzato.', flags: [MessageFlags.Ephemeral] });
         const embed = new EmbedBuilder()
             .setTitle('🏙️ EVREN CITY RP — Gestione Crew Ufficiale')
-            .setDescription('Clicca il pulsante per richiedere l\'approvazione automatica nella Crew!')
+            .setDescription('Clicca il pulsante sottostante per inviare la richiesta di approvazione automatica nella Crew inserendo il tuo ID di gioco!')
             .setColor('#2b2d31');
-        const button = new ButtonBuilder().setCustomId('btn_richiedi_crew').setLabel('Richiedi Approvazione').setStyle(ButtonStyle.Primary).setEmoji('⚡');
+        const button = new ButtonBuilder().setCustomId('btn_richiedi_crew').setLabel('Richiedi Approvazione Crew').setStyle(ButtonStyle.Primary).setEmoji('⚡');
         await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
-        return interaction.reply({ content: 'Pannello inviato!', flags: [MessageFlags.Ephemeral] });
+        return interaction.reply({ content: 'Pannello inviato con successo!', flags: [MessageFlags.Ephemeral] });
     }
 
     if (interaction.isButton() && interaction.customId === 'btn_richiedi_crew') {
-        const modal = new ModalBuilder().setCustomId('modal_richiesta_crew').setTitle('Evren City RP — Verifica');
-        const scInput = new TextInputBuilder().setCustomId('input_sc_username').setLabel('Nickname Social Club').setStyle(TextInputStyle.Short).setRequired(true);
-        modal.addComponents(new ActionRowBuilder().addComponents(scInput));
+        const modal = new ModalBuilder().setCustomId('modal_richiesta_crew').setTitle('Evren City RP — Verifica ID Crew');
+        
+        const gameIdInput = new TextInputBuilder()
+            .setCustomId('input_game_id')
+            .setLabel('Il tuo ID (es. PSN ID o Social Club ID)')
+            .setPlaceholder('Es. MarioRossi_99 o EvrenPlayer')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        const platformInput = new TextInputBuilder()
+            .setCustomId('input_platform_type')
+            .setLabel('Piattaforma (PC / PlayStation)')
+            .setPlaceholder('Scrivi: pc oppure ps')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(gameIdInput),
+            new ActionRowBuilder().addComponents(platformInput)
+        );
+
         await interaction.showModal(modal);
     }
 
     if (interaction.isModalSubmit() && interaction.customId === 'modal_richiesta_crew') {
-        const scUsername = interaction.fields.getTextInputValue('input_sc_username').trim();
-        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-        await interaction.editReply('⏳ Elaborazione richiesta in corso...');
+        const gameId = interaction.fields.getTextInputValue('input_game_id').trim();
+        const platformType = interaction.fields.getTextInputValue('input_platform_type').trim().toLowerCase();
 
-        const success = await queueTask(() => autoApproveUser(scUsername));
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        await interaction.editReply('⏳ Riconoscimento automatico e invio richiesta in corso...');
+
+        const success = await queueTask(() => autoApproveUser(gameId, platformType));
+
         if (success) {
-            await interaction.user.send(`✅ Il tuo account **${scUsername}** è stato elaborato con successo!`).catch(() => {});
-            await sendLogMessage(new EmbedBuilder().setTitle('🟢 LOG: Approvato').addFields({ name: 'Utente', value: scUsername })).catch(() => {});
+            const dmEmbedSuccess = new EmbedBuilder()
+                .setTitle('✅ Richiesta Crew Approvata!')
+                .setDescription(`Ciao **${interaction.user.username}**, la tua richiesta per entrare nella Crew di Evren City RP è stata elaborata con successo!`)
+                .addFields(
+                    { name: '🆔 ID Riconosciuto', value: `\`${gameId}\``, inline: true },
+                    { name: '🎮 Piattaforma', value: `\`${platformType.toUpperCase()}\``, inline: true },
+                    { name: '📌 Stato', value: 'L\'account è stato associato e approvato automaticamente.', inline: false }
+                )
+                .setColor('#57F287')
+                .setTimestamp();
+
+            await interaction.user.send({ embeds: [dmEmbedSuccess] }).catch(() => {});
+            await interaction.editReply(`✅ Richiesta completata! Ti è stato inviato un messaggio privato (DM) di conferma.`);
+
+            await sendLogMessage(new EmbedBuilder()
+                .setTitle('🟢 LOG: Richiesta Crew Approvata')
+                .setColor('#57F287')
+                .addFields(
+                    { name: 'Utente Discord', value: `${interaction.user.tag} (<@${interaction.user.id}>)`, inline: false },
+                    { name: 'ID Riconosciuto', value: gameId, inline: true },
+                    { name: 'Piattaforma', value: platformType.toUpperCase(), inline: true }
+                )
+                .setTimestamp()
+            ).catch(() => {});
+
         } else {
-            await interaction.user.send(`⚠️ Errore durante l'elaborazione della richiesta.`).catch(() => {});
+            const dmEmbedError = new EmbedBuilder()
+                .setTitle('❌ Errore Richiesta Crew')
+                .setDescription(`Purtroppo si è verificato un problema durante l'elaborazione del tuo ID: \`${gameId}\`. Assicurati che il nickname sia corretto e riprova dal pannello principale.`)
+                .setColor('#ED4245')
+                .setTimestamp();
+
+            await interaction.user.send({ embeds: [dmEmbedError] }).catch(() => {});
+            await interaction.editReply(`❌ Si è verificato un errore. Controlla i tuoi messaggi privati per maggiori dettagli.`);
         }
     }
 
@@ -405,8 +455,7 @@ client.on('interactionCreate', async interaction => {
         if (success) {
             await interaction.editReply(`✅ Azione **${action.toUpperCase()}** eseguita con successo su **${username}**.`);
             
-            // Colore e titolo personalizzati per il log in base all'azione
-            let logColor = '#5865F2'; // Default blurple
+            let logColor = '#5865F2'; 
             let emojiAction = '⚙️';
             if (action === 'kick') { logColor = '#fEE75C'; emojiAction = '👢'; }
             else if (action === 'ban') { logColor = '#ED4245'; emojiAction = '🔨'; }
