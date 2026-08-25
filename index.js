@@ -79,7 +79,7 @@ let membersCache = [];
 let bannedCache = [];
 
 async function initSocialClub() {
-    console.log("[Puppeteer] Avvio browser Chromium...");
+    console.log("[Puppeteer] Avvio browser Chromium ottimizzato per RAM ridotta...");
     const browser = await puppeteer.launch({ 
         headless: true,
         args: [
@@ -90,11 +90,31 @@ async function initSocialClub() {
             '--no-first-run',
             '--no-zygote',
             '--single-process',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--hide-scrollbars',
+            '--metrics-recording-only',
+            '--mute-audio',
+            '--no-default-browser-check',
+            '--disable-infobars'
         ] 
     });
     
     page = await browser.newPage();
+
+    // Ottimizzazione RAM: blocca immagini, CSS e font non necessari per il parsing
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+        const resourceType = req.resourceType();
+        if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font') {
+            req.abort();
+        } else {
+            req.continue();
+        }
+    });
 
     if (process.env.COOKIES_JSON) {
         try {
@@ -440,9 +460,9 @@ client.on('interactionCreate', async interaction => {
                         .setTitle('✅ Richiesta Approvata — Evren City RP')
                         .setDescription(
                             `Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\n` +
-                            '**🎮 Cosa devi fare adesso:**\n' +
+                            '**🎮 Cosa devi fare adesso:**\n`' +
                             `1. Torna sulla pagina della Crew cliccando qui: [Apri la Crew sul Social Club](${crewUrl})\n` +
-                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n' +
+                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n` +
                             'Buon Roleplay in città! 🏙️'
                         )
                         .setColor('#2ecc71');
@@ -469,8 +489,8 @@ client.on('interactionCreate', async interaction => {
                             `Non siamo riusciti a trovare nessuna richiesta pendente per **${scUsername}**.\n\n` +
                             '**⚠️ Cosa devi fare adesso:**\n' +
                             `1. Assicurati di andare sulla pagina della nostra Crew su Rockstar Social Club ([clicca qui per aprirla](${crewUrl})) o direttamente in-game.\n` +
-                            '2. Invia la richiesta per unirti/accettare l\'invito.\n`' +
-                            '3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n`' +
+                            '2. Invia la richiesta per unirti/accettare l\'invito.\n' +
+                            '3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n' +
                             '4. Torna sul server Discord di Evren City e riprova a cliccare sul pulsante!'
                         )
                         .setColor('#e74c3c');
