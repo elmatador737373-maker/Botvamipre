@@ -65,7 +65,7 @@ async function processQueue() {
     }
 }
 
-// --- 3. INIZIALIZZAZIONE PUPPETEER & DISCORD ---
+// --- 3. INIZIALIZZAZIONE DISCORD & PUPPETEER DINAMICO ---
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds,
@@ -74,12 +74,12 @@ const client = new Client({
     ] 
 });
 
-let page;
 let membersCache = [];
 let bannedCache = [];
 
-async function initSocialClub() {
-    console.log("[Puppeteer] Avvio browser Chromium ottimizzato per RAM ridotta...");
+// Funzione per avviare un'istanza leggera di Chromium al momento dell'azione e chiuderla subito dopo
+async function getBrowserPage() {
+    console.log("[Puppeteer] Avvio istanza temporanea di Chromium...");
     const browser = await puppeteer.launch({ 
         headless: true,
         args: [
@@ -103,9 +103,9 @@ async function initSocialClub() {
         ] 
     });
     
-    page = await browser.newPage();
+    const page = await browser.newPage();
 
-    // Ottimizzazione RAM: blocca immagini, CSS e font non necessari per il parsing
+    // Blocca immagini, CSS e font per risparmiare RAM al massimo
     await page.setRequestInterception(true);
     page.on('request', (req) => {
         const resourceType = req.resourceType();
@@ -120,19 +120,15 @@ async function initSocialClub() {
         try {
             const cookies = JSON.parse(process.env.COOKIES_JSON);
             await page.setCookie(...cookies);
-            console.log("[Social Club] Cookie di sessione caricati dalla variabile d'ambiente!");
         } catch (e) {
-            console.error("⚠️ ERRORE durante il parsing della variabile COOKIES_JSON:", e);
+            console.error("⚠️ Errore parsing COOKIES_JSON:", e);
         }
     } else if (await fs.pathExists('./cookies.json')) {
         const cookies = await fs.readJson('./cookies.json');
         await page.setCookie(...cookies);
-        console.log("[Social Club] Cookie di sessione caricati dal file locale!");
-    } else {
-        console.error("⚠️ CRITICO: Cookie non trovati né nelle variabili d'ambiente (COOKIES_JSON) né su file locale!");
     }
 
-    console.log("✅ [Social Club] Setup iniziale completato. Pronto a ricevere richieste!");
+    return { browser, page };
 }
 
 // --- FUNZIONE PER SPEDIRE LOG NEL CANALE DEDICATO ---
@@ -149,113 +145,124 @@ async function sendLogMessage(embed) {
     }
 }
 
-// --- 4. FUNZIONI WEB SCRAPING ROCKSTAR ---
+// --- 4. FUNZIONI WEB SCRAPING ROCKSTAR (CON CHIUSURA AUTOMATICA DEL BROWSER) ---
 
 async function autoApproveUser(username) {
-    const crewManageUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`;
-    console.log(`[Social Club] Apertura pagina richieste crew: ${crewManageUrl}`);
-    
-    await page.goto(crewManageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const { browser, page } = await getBrowserPage();
+    try {
+        const crewManageUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`;
+        await page.goto(crewManageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    return await page.evaluate((targetUser) => {
-        const cards = Array.from(document.querySelectorAll('.invite-card'));
-        for (const card of cards) {
-            const nameEl = card.querySelector('.invite-card-username');
-            if (nameEl && nameEl.textContent.trim().toLowerCase() === targetUser.toLowerCase()) {
-                const acceptBtn = card.querySelector('button.accept-btn');
-                if (acceptBtn) {
-                    acceptBtn.click();
-                    return true;
+        return await page.evaluate((targetUser) => {
+            const cards = Array.from(document.querySelectorAll('.invite-card'));
+            for (const card of cards) {
+                const nameEl = card.querySelector('.invite-card-username');
+                if (nameEl && nameEl.textContent.trim().toLowerCase() === targetUser.toLowerCase()) {
+                    const acceptBtn = card.querySelector('button.accept-btn');
+                    if (acceptBtn) {
+                        acceptBtn.click();
+                        return true;
+                    }
                 }
             }
-        }
-        return false;
-    }, username);
+            return false;
+        }, username);
+    } finally {
+        await browser.close();
+    }
 }
 
 async function fetchCrewMembers() {
-    const membersUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/members`;
-    await page.goto(membersUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const { browser, page } = await getBrowserPage();
+    try {
+        const membersUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/members`;
+        await page.goto(membersUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    membersCache = await page.evaluate(() => {
-        const cards = Array.from(document.querySelectorAll('.member-card'));
-        return cards.map(card => {
-            const name = card.querySelector('.member-card-username')?.textContent.trim() || '';
-            const platform = card.querySelector('.platform-icon')?.getAttribute('title')?.toLowerCase() || 'pc'; 
-            return { name, platform };
+        membersCache = await page.evaluate(() => {
+            const cards = Array.from(document.querySelectorAll('.member-card'));
+            return cards.map(card => {
+                const name = card.querySelector('.member-card-username')?.textContent.trim() || '';
+                const platform = card.querySelector('.platform-icon')?.getAttribute('title')?.toLowerCase() || 'pc'; 
+                return { name, platform };
+            });
         });
-    });
-
-    return membersCache;
+        return membersCache;
+    } finally {
+        await browser.close();
+    }
 }
 
 async function fetchBannedMembers() {
-    const bannedUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/banned`;
-    await page.goto(bannedUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const { browser, page } = await getBrowserPage();
+    try {
+        const bannedUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/banned`;
+        await page.goto(bannedUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    bannedCache = await page.evaluate(() => {
-        const cards = Array.from(document.querySelectorAll('.banned-card, .member-card'));
-        return cards.map(card => {
-            const name = card.querySelector('.banned-card-username, .member-card-username')?.textContent.trim() || '';
-            const platform = card.querySelector('.platform-icon')?.getAttribute('title')?.toLowerCase() || 'pc'; 
-            return { name, platform };
+        bannedCache = await page.evaluate(() => {
+            const cards = Array.from(document.querySelectorAll('.banned-card, .member-card'));
+            return cards.map(card => {
+                const name = card.querySelector('.banned-card-username, .member-card-username')?.textContent.trim() || '';
+                const platform = card.querySelector('.platform-icon')?.getAttribute('title')?.toLowerCase() || 'pc'; 
+                return { name, platform };
+            });
         });
-    });
-
-    return bannedCache;
+        return bannedCache;
+    } finally {
+        await browser.close();
+    }
 }
 
 async function manageCrewMember(username, platform, action = 'kick') {
-    let targetUrl;
-    if (action === 'unban') {
-        targetUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/banned`;
-    } else {
-        targetUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/members`;
-    }
+    const { browser, page } = await getBrowserPage();
+    try {
+        let targetUrl = action === 'unban' 
+            ? `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/banned`
+            : `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/members`;
 
-    if (page.url() !== targetUrl) {
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    }
 
-    return await page.evaluate((targetUser, targetPlatform, actionType) => {
-        const cardSelector = actionType === 'unban' ? '.banned-card, .member-card' : '.member-card';
-        const cards = Array.from(document.querySelectorAll(cardSelector));
+        return await page.evaluate((targetUser, targetPlatform, actionType) => {
+            const cardSelector = actionType === 'unban' ? '.banned-card, .member-card' : '.member-card';
+            const cards = Array.from(document.querySelectorAll(cardSelector));
 
-        for (const card of cards) {
-            const nameEl = card.querySelector('.banned-card-username, .member-card-username');
-            const platformEl = card.querySelector('.platform-icon');
-            const userPlatform = platformEl ? platformEl.getAttribute('title')?.toLowerCase() : 'all';
+            for (const card of cards) {
+                const nameEl = card.querySelector('.banned-card-username, .member-card-username');
+                const platformEl = card.querySelector('.platform-icon');
+                const userPlatform = platformEl ? platformEl.getAttribute('title')?.toLowerCase() : 'all';
 
-            const matchesUser = nameEl && nameEl.textContent.trim().toLowerCase() === targetUser.toLowerCase();
-            const matchesPlatform = targetPlatform === 'all' || (userPlatform && userPlatform.includes(targetPlatform));
+                const matchesUser = nameEl && nameEl.textContent.trim().toLowerCase() === targetUser.toLowerCase();
+                const matchesPlatform = targetPlatform === 'all' || (userPlatform && userPlatform.includes(targetPlatform));
 
-            if (matchesUser && matchesPlatform) {
-                if (actionType === 'unban') {
-                    const unbanBtn = card.querySelector('button.unban-btn, button.remove-ban-btn');
-                    if (unbanBtn) {
-                        unbanBtn.click();
-                        const confirmBtn = document.querySelector('.modal-confirm-btn');
-                        if (confirmBtn) confirmBtn.click();
-                        return true;
-                    }
-                } else {
-                    const menuBtn = card.querySelector('.member-options-btn');
-                    if (menuBtn) menuBtn.click();
+                if (matchesUser && matchesPlatform) {
+                    if (actionType === 'unban') {
+                        const unbanBtn = card.querySelector('button.unban-btn, button.remove-ban-btn');
+                        if (unbanBtn) {
+                            unbanBtn.click();
+                            const confirmBtn = document.querySelector('.modal-confirm-btn');
+                            if (confirmBtn) confirmBtn.click();
+                            return true;
+                        }
+                    } else {
+                        const menuBtn = card.querySelector('.member-options-btn');
+                        if (menuBtn) menuBtn.click();
 
-                    const targetBtnSelector = actionType === 'ban' ? 'button.ban-btn' : 'button.kick-btn';
-                    const actionBtn = card.querySelector(targetBtnSelector);
+                        const targetBtnSelector = actionType === 'ban' ? 'button.ban-btn' : 'button.kick-btn';
+                        const actionBtn = card.querySelector(targetBtnSelector);
 
-                    if (actionBtn) {
-                        actionBtn.click();
-                        const confirmBtn = document.querySelector('.modal-confirm-btn');
-                        if (confirmBtn) confirmBtn.click();
-                        return true;
+                        if (actionBtn) {
+                            actionBtn.click();
+                            const confirmBtn = document.querySelector('.modal-confirm-btn');
+                            if (confirmBtn) confirmBtn.click();
+                            return true;
+                        }
                     }
                 }
             }
-        }
-        return false;
-    }, username, platform, action);
+            return false;
+        }, username, platform, action);
+    } finally {
+        await browser.close();
+    }
 }
 
 // --- 5. DEFINIZIONE COMANDI DISCORD PER EVREN CITY ---
@@ -300,7 +307,6 @@ const unbanCommand = new SlashCommandBuilder()
 
 client.once('ready', async () => {
     console.log(`[Evren City] Bot connesso come ${client.user.tag}`);
-    await initSocialClub();
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(
@@ -360,6 +366,7 @@ client.on('interactionCreate', async interaction => {
 
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
+        const { browser, page } = await getBrowserPage();
         try {
             await page.goto('https://socialclub.rockstargames.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
             await sleep(3000);
@@ -383,6 +390,8 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply({
                 content: `❌ **[Social Club] Errore di connessione:** Impossibile caricare la pagina (${err.message}).`
             });
+        } finally {
+            await browser.close();
         }
         return;
     }
@@ -490,9 +499,9 @@ client.on('interactionCreate', async interaction => {
                             `Non siamo riusciti a trovare nessuna richiesta pendente per **${scUsername}**.\n\n` +
                             '**⚠️ Cosa devi fare adesso:**\n' +
                             `1. Assicurati di andare sulla pagina della nostra Crew su Rockstar Social Club ([clicca qui per aprirla](${crewUrl})) o direttamente in-game.\n` +
-                            '2. Invia la richiesta per unirti/accettare l\'invito.\n' +
-                            '3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n' +
-                            '4. Torna sul server Discord di Evren City e riprova a cliccare sul pulsante!'
+                            '2. Invia la richiesta per unirti/accettare l\'invito.\n`' +
+                            '3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n`' +
+                            '4. Torna sul server Discord di Evren City e riprova a cliccare sul pulsante!`'
                         )
                         .setColor('#e74c3c');
                     await interaction.user.send({ embeds: [failEmbed] });
