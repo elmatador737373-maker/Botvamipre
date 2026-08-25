@@ -111,6 +111,27 @@ async function initSocialClub() {
     } else {
         console.error("⚠️ CRITICO: Cookie non trovati né nelle variabili d'ambiente (COOKIES_JSON) né su file locale!");
     }
+
+    // VERIFICA DEL LOGIN SUBITO DOPO L'AVVIO
+    try {
+        console.log("[Social Club] Controllo stato di autenticazione sul Social Club...");
+        await page.goto(`https://socialclub.rockstargames.com/`, { waitUntil: 'networkidle2', timeout: 45000 });
+        
+        // Estrae il nickname o lo stato di login dalla pagina
+        const loggedUsername = await page.evaluate(() => {
+            // Cerca elementi tipici del profilo loggato sul Social Club
+            const profileEl = document.querySelector('.profile-name, [data-analytics-action="Profile"], .user-name');
+            return profileEl ? profileEl.textContent.trim() : null;
+        });
+
+        if (loggedUsername) {
+            console.log(`✅ [Social Club] Login riuscito con successo! Account attivo: ${loggedUsername}`);
+        } else {
+            console.log("⚠️ [Social Club] ATTENZIONE: Impossibile rilevare il nome utente. I cookie potrebbero essere scaduti o non validi.");
+        }
+    } catch (err) {
+        console.error("⚠️ [Social Club] Errore durante la verifica iniziale della pagina:", err.message);
+    }
 }
 
 // --- FUNZIONE PER SPEDIRE LOG NEL CANALE DEDICATO ---
@@ -131,6 +152,8 @@ async function sendLogMessage(embed) {
 
 async function autoApproveUser(username) {
     const crewManageUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`;
+    console.log(`[Social Club] Apertura pagina richieste crew: ${crewManageUrl}`);
+    
     await page.goto(crewManageUrl, { waitUntil: 'networkidle2' });
 
     return await page.evaluate((targetUser) => {
@@ -286,12 +309,10 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
     
-    // VERIFICA RUOLO STAFF PER I COMANDI
     const checkStaffPermission = (member) => {
         return member.roles.cache.has(process.env.ROLE_STAFF_ID) || member.permissions.has('Administrator');
     };
 
-    // 1. AUTOCOMPLETE COMANDI KICK / BAN / UNBAN
     if (interaction.isAutocomplete()) {
         const { commandName } = interaction;
         if (commandName === 'kick_crew' || commandName === 'ban_crew' || commandName === 'unban_crew') {
@@ -327,7 +348,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // 2. CREAZIONE PANNELLO STAFF
     if (interaction.isChatInputCommand() && interaction.commandName === 'setup_pannello') {
         if (!checkStaffPermission(interaction.member)) {
             return interaction.reply({ content: '❌ Non hai il ruolo Staff necessario per usare questo comando.', flags: [MessageFlags.Ephemeral] });
@@ -360,7 +380,6 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ content: 'Pannello Evren City inviato con successo!', flags: [MessageFlags.Ephemeral] });
     }
 
-    // 3. CLICK PULSANTE -> APERTURA MODAL
     if (interaction.isButton() && interaction.customId === 'btn_richiedi_crew') {
         const modal = new ModalBuilder()
             .setCustomId('modal_richiesta_crew')
@@ -377,12 +396,10 @@ client.on('interactionCreate', async interaction => {
         await interaction.showModal(modal);
     }
 
-    // 4. INVIO MODAL -> ELABORAZIONE E NOTIFICHE DM + LOG
     if (interaction.isModalSubmit() && interaction.customId === 'modal_richiesta_crew') {
         const scUsername = interaction.fields.getTextInputValue('input_sc_username').trim();
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-        // Invia Primo DM: Presa in carico
         try {
             const startEmbed = new EmbedBuilder()
                 .setTitle('⏳ Richiesta in Elaborazione — Evren City RP')
@@ -399,7 +416,6 @@ client.on('interactionCreate', async interaction => {
             const success = await queueTask(() => autoApproveUser(scUsername));
 
             if (success) {
-                // Notifica DM: Approvato con invito a tornare sul link della Crew
                 try {
                     const crewUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}`;
                     const successEmbed = new EmbedBuilder()
@@ -408,14 +424,13 @@ client.on('interactionCreate', async interaction => {
                             `Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\n` +
                             '**🎮 Cosa devi fare adesso:**\n' +
                             `1. Torna sulla pagina della Crew cliccando qui: [Apri la Crew sul Social Club](${crewUrl})\n` +
-                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n' +
+                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n` +
                             'Buon Roleplay in città! 🏙️'
                         )
                         .setColor('#2ecc71');
                     await interaction.user.send({ embeds: [successEmbed] });
                 } catch (e) {}
 
-                // LOG AUDIT CANALE DEDICATO
                 const logEmbed = new EmbedBuilder()
                     .setTitle('🟢 LOG: Ingresso Crew Approvato')
                     .addFields(
@@ -428,7 +443,6 @@ client.on('interactionCreate', async interaction => {
                 await sendLogMessage(logEmbed);
 
             } else {
-                // Notifica DM: Errore / Non Trovato con promemoria sul link della Crew
                 try {
                     const crewUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}`;
                     const failEmbed = new EmbedBuilder()
@@ -445,7 +459,6 @@ client.on('interactionCreate', async interaction => {
                     await interaction.user.send({ embeds: [failEmbed] });
                 } catch (e) {}
 
-                // LOG AUDIT FALLIMENTO
                 const logEmbed = new EmbedBuilder()
                     .setTitle('🟡 LOG: Ingresso Crew Fallito (Nessuna Richiesta Pendente)')
                     .addFields(
@@ -457,14 +470,13 @@ client.on('interactionCreate', async interaction => {
                 await sendLogMessage(logEmbed);
             }
         } catch (err) {
-            console.error(err);
+            console.error("❌ ERRORE CRITICO NELLO SCRAPING SOCIAL CLUB:", err);
             try {
                 await interaction.user.send('❌ Si è verificato un errore tecnico temporaneo durante l\'approvazione. Riprova più tardi o contatta lo Staff.');
             } catch (e) {}
         }
     }
 
-    // 5. COMANDI STAFF (KICK, BAN, UNBAN) CON PULSANTI DI CONFERMA E LOG
     if (interaction.isChatInputCommand() && (interaction.commandName === 'kick_crew' || interaction.commandName === 'ban_crew' || interaction.commandName === 'unban_crew')) {
         if (!checkStaffPermission(interaction.member)) {
             return interaction.reply({ content: '❌ Non possiedi il ruolo Staff necessario per eseguire questa azione.', flags: [MessageFlags.Ephemeral] });
@@ -489,7 +501,6 @@ client.on('interactionCreate', async interaction => {
             colorHex = '#3498db';
         }
 
-        // EMBED E PULSANTI DI CONFERMA
         const confirmEmbed = new EmbedBuilder()
             .setTitle(`⚠️ Conferma ${actionTitle}`)
             .setDescription(
@@ -519,7 +530,6 @@ client.on('interactionCreate', async interaction => {
             flags: [MessageFlags.Ephemeral]
         });
 
-        // COLLECTOR PER I PULSANTI (Tempo limite: 30 secondi)
         const collector = response.createMessageComponentCollector({
             componentType: ComponentType.Button,
             time: 30000
@@ -546,7 +556,6 @@ client.on('interactionCreate', async interaction => {
                     const success = await queueTask(() => manageCrewMember(targetUser, platform, actionType));
 
                     if (success) {
-                        // Aggiorna le cache locali
                         if (actionType === 'unban') {
                             bannedCache = bannedCache.filter(m => m.name !== targetUser);
                         } else {
@@ -557,7 +566,6 @@ client.on('interactionCreate', async interaction => {
                             content: `✅ **[EVREN CITY STAFF]** L'azione **${actionTitle}** su **${targetUser}** (${platform.toUpperCase()}) è stata eseguita con successo su Rockstar Social Club!`
                         });
 
-                        // AUDIT LOG NEL CANALE DEDICATO
                         const logEmbed = new EmbedBuilder()
                             .setTitle(`🔴 LOG: ${actionTitle} Eseguito`)
                             .addFields(
