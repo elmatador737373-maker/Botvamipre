@@ -11,24 +11,25 @@ const {
     TextInputStyle, 
     SlashCommandBuilder,
     REST,
-    Routes
+    Routes,
+    EmbedBuilder
 } = require('discord.js');
 const puppeteer = require('puppeteer');
 const fs = require('fs-extra');
 
-// --- 1. SERVER WEB FOR RENDER (PREVIENE SLEEP E PERMETTE UPTIME PING) ---
+// --- 1. SERVER WEB HTTP (PER RENDER & UPTIME ROBOT) ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('GTA Crew Bot Online & Active!');
+    res.send('Evren City RP - Crew Manager Bot Online!');
 });
 
 app.listen(PORT, () => {
-    console.log(`[HTTP] Server avviato sulla porta ${PORT}`);
+    console.log(`[Evren City] Server HTTP avviato sulla porta ${PORT}`);
 });
 
-// --- 2. GESTIONE CODA DI ESECUZIONE E COOLDOWN ANTI-BAN ---
+// --- 2. GESTIONE CODA & COOLDOWN ANTI-BAN ---
 const taskQueue = [];
 let isProcessingQueue = false;
 
@@ -48,9 +49,8 @@ async function processQueue() {
     const { taskFunction, resolve, reject } = taskQueue.shift();
 
     try {
-        // Pausa casuale di sicurezza tra 3.5s e 6.5s prima di fare azioni sul Social Club
         const randomDelay = Math.floor(Math.random() * 3000) + 3500;
-        console.log(`[Anti-Bot] Attesa di ${randomDelay}ms per simulare comportamento umano...`);
+        console.log(`[Anti-Bot] Attesa di ${randomDelay}ms per simulazione umana...`);
         await sleep(randomDelay);
 
         const result = await taskFunction();
@@ -63,8 +63,15 @@ async function processQueue() {
     }
 }
 
-// --- 3. CONFIGURAZIONE DISCORD & PUPPETEER ---
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// --- 3. INIZIALIZZAZIONE PUPPETEER & DISCORD ---
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.DirectMessages
+    ] 
+});
+
 let page;
 let membersCache = [];
 
@@ -79,7 +86,7 @@ async function initSocialClub() {
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process', // Ottimizzazione memoria RAM per Render
+            '--single-process',
             '--disable-gpu'
         ] 
     });
@@ -89,13 +96,13 @@ async function initSocialClub() {
     if (await fs.pathExists('./cookies.json')) {
         const cookies = await fs.readJson('./cookies.json');
         await page.setCookie(...cookies);
-        console.log("[Social Club] Cookie caricati con successo!");
+        console.log("[Social Club] Cookie di sessione caricati!");
     } else {
-        console.error("⚠️ CRITICO: Archivio cookies.json non trovato! Generalo prima in locale e poi caricalo sul server.");
+        console.error("⚠️ CRITICO: File cookies.json mancante! Esegui il primo avvio in locale per generarlo.");
     }
 }
 
-// --- 4. FUNZIONI DI SCRAPING ED AUTOMAZIONE WEB ---
+// --- 4. FUNZIONI WEB SCRAPING ROCKSTAR ---
 
 async function autoApproveUser(username) {
     const crewManageUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`;
@@ -168,11 +175,11 @@ async function manageCrewMember(username, platform, action = 'kick') {
     }, username, platform, action);
 }
 
-// --- 5. DEFINIZIONE COMANDI DISCORD ---
+// --- 5. DEFINIZIONE COMANDI DISCORD PER EVREN CITY ---
 
 const setupCommand = new SlashCommandBuilder()
     .setName('setup_pannello')
-    .setDescription('[ADMIN] Crea il pannello per la richiesta d\'ingresso nella Crew');
+    .setDescription('[STAFF EVREN CITY] Invia il pannello per l\'ingresso nella Crew');
 
 const choicesPiattaforma = [
     { name: 'Tutte le Piattaforme', value: 'all' },
@@ -183,20 +190,20 @@ const choicesPiattaforma = [
 
 const kickCommand = new SlashCommandBuilder()
     .setName('kick_crew')
-    .setDescription('[STAFF] Espelle un membro dalla Crew Social Club')
+    .setDescription('[STAFF EVREN CITY] Espelle un membro dalla Crew Social Club')
     .addStringOption(opt => opt.setName('piattaforma').setDescription('Piattaforma dell\'utente').setRequired(true).addChoices(...choicesPiattaforma))
     .addStringOption(opt => opt.setName('utente').setDescription('Seleziona utente').setRequired(true).setAutocomplete(true));
 
 const banCommand = new SlashCommandBuilder()
     .setName('ban_crew')
-    .setDescription('[STAFF] Banna e blocca un membro dalla Crew Social Club')
+    .setDescription('[STAFF EVREN CITY] Banna e blocca un membro dalla Crew Social Club')
     .addStringOption(opt => opt.setName('piattaforma').setDescription('Piattaforma dell\'utente').setRequired(true).addChoices(...choicesPiattaforma))
     .addStringOption(opt => opt.setName('utente').setDescription('Seleziona utente').setRequired(true).setAutocomplete(true));
 
 // --- 6. EVENTO READY & REGISTRAZIONE COMANDI ---
 
 client.once('ready', async () => {
-    console.log(`[Discord] Bot loggato come: ${client.user.tag}`);
+    console.log(`[Evren City] Bot connesso come ${client.user.tag}`);
     await initSocialClub();
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -204,17 +211,24 @@ client.once('ready', async () => {
         Routes.applicationCommands(client.user.id), 
         { body: [setupCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON()] }
     );
-    console.log("[Discord] Comandi Slash registrati con successo!");
+    console.log("[Evren City] Comandi registrati!");
 });
 
-// --- 7. HANDLER DELLE INTERAZIONI ---
+// --- 7. GESTIONE INTERAZIONI DISCORD ---
 
 client.on('interactionCreate', async interaction => {
     
-    // Autocomplete filtrato per Piattaforma e Nome
+    // VERIFICA RUOLO STAFF PER I COMANDI
+    const checkStaffPermission = (member) => {
+        return member.roles.cache.has(process.env.STAFF_ROLE_ID) || member.permissions.has('Administrator');
+    };
+
+    // 1. AUTOCOMPLETE COMANDI KICK / BAN
     if (interaction.isAutocomplete()) {
         const { commandName } = interaction;
         if (commandName === 'kick_crew' || commandName === 'ban_crew') {
+            if (!checkStaffPermission(interaction.member)) return;
+
             const selectedPlatform = interaction.options.getString('piattaforma') || 'all';
             const focusedValue = interaction.options.getFocused().toLowerCase();
 
@@ -235,28 +249,45 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // Comando per pubblicare il pannello
+    // 2. CREAZIONE PANNELLO STAFF
     if (interaction.isChatInputCommand() && interaction.commandName === 'setup_pannello') {
-        if (!interaction.member.permissions.has('Administrator')) {
-            return interaction.reply({ content: '❌ Permesso negato: solo Amministratori.', ephemeral: true });
+        if (!checkStaffPermission(interaction.member)) {
+            return interaction.reply({ content: '❌ Non hai il ruolo Staff necessario per usare questo comando.', ephemeral: true });
         }
+
+        const embed = new EmbedBuilder()
+            .setTitle('🏙️ EVREN CITY RP — Gestione Crew Ufficiale')
+            .setDescription(
+                'Benvenuto nella gestione automatica della Crew Ufficiale di **Evren City RP**!\n\n' +
+                '**Istruzioni per l\'ingresso:**\n' +
+                '1️⃣ Vai sul Social Club di Rockstar o in-game e invia la richiesta alla nostra Crew.\n' +
+                '2️⃣ Clicca sul pulsante **"Richiedi Approvazione"** qui sotto.\n' +
+                '3️⃣ Inserisci il tuo nickname preciso del Social Club.\n\n' +
+                '*Il sistema elaborerà la tua richiesta e ti notificherà lo stato direttamente in Messaggio Privato (DM).*'
+            )
+            .setColor('#2b2d31')
+            .setFooter({ text: 'Evren City RP — Automation Bot' });
 
         const button = new ButtonBuilder()
             .setCustomId('btn_richiedi_crew')
-            .setLabel('Richiedi Entrata nella Crew')
-            .setStyle(ButtonStyle.Success);
+            .setLabel('Richiedi Approvazione')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('⚡');
 
         await interaction.channel.send({
-            content: '📌 **Richiesta di Ingresso nella Crew**\n\n1. Invia la richiesta d\'invito prima sul sito del Social Club o in-game.\n2. Clicca il pulsante qui sotto per inserire il tuo Nickname Social Club ed essere approvato!',
+            embeds: [embed],
             components: [new ActionRowBuilder().addComponents(button)]
         });
 
-        return interaction.reply({ content: 'Pannello inviato correttamente!', ephemeral: true });
+        return interaction.reply({ content: 'Pannello Evren City inviato con successo!', ephemeral: true });
     }
 
-    // Click sul Pulsante -> Apre il Popup Modal
+    // 3. CLICK PULSANTE -> APERTURA MODAL
     if (interaction.isButton() && interaction.customId === 'btn_richiedi_crew') {
-        const modal = new ModalBuilder().setCustomId('modal_richiesta_crew').setTitle('Verifica Social Club');
+        const modal = new ModalBuilder()
+            .setCustomId('modal_richiesta_crew')
+            .setTitle('Evren City RP — Verifica');
+
         const scInput = new TextInputBuilder()
             .setCustomId('input_sc_username')
             .setLabel('Il tuo Nickname Social Club')
@@ -268,28 +299,69 @@ client.on('interactionCreate', async interaction => {
         await interaction.showModal(modal);
     }
 
-    // Invio Form Modal -> Accodamento per l'approvazione automatica
+    // 4. INVIO MODAL -> ELABORAZIONE E NOTIFICHE DM
     if (interaction.isModalSubmit() && interaction.customId === 'modal_richiesta_crew') {
         const scUsername = interaction.fields.getTextInputValue('input_sc_username').trim();
         await interaction.deferReply({ ephemeral: true });
 
+        // Invia Primo DM: Presa in carico
+        try {
+            const startEmbed = new EmbedBuilder()
+                .setTitle('⏳ Richiesta in Elaborazione — Evren City RP')
+                .setDescription(`Abbiamo preso in carico la tua richiesta per l'account Social Club: **${scUsername}**.\nIl sistema stà verificando sul Social Club di Rockstar...`)
+                .setColor('#f1c40f');
+            await interaction.user.send({ embeds: [startEmbed] });
+        } catch (e) {
+            console.log(`Impossibile inviare DM di avvio a ${interaction.user.tag} (DM chiusi)`);
+        }
+
+        await interaction.editReply('⏳ La tua richiesta è stata presa in carico! Controlla i tuoi messaggi privati (DM) per gli aggiornamenti.');
+
         try {
             const success = await queueTask(() => autoApproveUser(scUsername));
+
             if (success) {
-                await interaction.editReply(`✅ **Approvato!** L'utente **${scUsername}** è stato accettato nella Crew Social Club!`);
+                // Notifica DM: Approvato
+                try {
+                    const successEmbed = new EmbedBuilder()
+                        .setTitle('✅ Richiesta Approvata — Evren City RP')
+                        .setDescription(`Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\nBuon Roleplay in città! 🏙️`)
+                        .setColor('#2ecc71');
+                    await interaction.user.send({ embeds: [successEmbed] });
+                } catch (e) {
+                    console.log(`Impossibile inviare DM di successo a ${interaction.user.tag}`);
+                }
+
             } else {
-                await interaction.editReply(`⚠️ Impossibile trovare una richiesta pendente per **${scUsername}**.\n\nAssicurati di aver prima cliccato su *"Richiedi Invito"* dal Social Club.`);
+                // Notifica DM: Errore / Non Trovato
+                try {
+                    const failEmbed = new EmbedBuilder()
+                        .setTitle('⚠️ Richiesta Non Trovata — Evren City RP')
+                        .setDescription(
+                            `Non siamo riusciti a trovare nessuna richiesta pendente per **${scUsername}**.\n\n` +
+                            '**Cosa devi fare adesso:**\n' +
+                            '1. Assicurati di aver inviato la richiesta dal sito Social Club o da GTA Online.\n' +
+                            '2. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n' +
+                            '3. Torna sul server e riprova.'
+                        )
+                        .setColor('#e74c3c');
+                    await interaction.user.send({ embeds: [failEmbed] });
+                } catch (e) {
+                    console.log(`Impossibile inviare DM di errore a ${interaction.user.tag}`);
+                }
             }
         } catch (err) {
             console.error(err);
-            await interaction.editReply('❌ Si è verificato un errore o l\'operazione è andata in timeout. Riprova tra poco.');
+            try {
+                await interaction.user.send('❌ Si è verificato un errore tecnico temporaneo durante l\'approvazione. Riprova più tardi o contatta lo Staff.');
+            } catch (e) {}
         }
     }
 
-    // Comandi Staff (Kick / Ban)
+    // 5. COMANDI STAFF (KICK & BAN)
     if (interaction.isChatInputCommand() && (interaction.commandName === 'kick_crew' || interaction.commandName === 'ban_crew')) {
-        if (!interaction.member.permissions.has('KickMembers')) {
-            return interaction.reply({ content: '❌ Permessi non sufficienti.', ephemeral: true });
+        if (!checkStaffPermission(interaction.member)) {
+            return interaction.reply({ content: '❌ Non possiedi il ruolo Staff necessario per eseguire questa azione.', ephemeral: true });
         }
 
         const platform = interaction.options.getString('piattaforma');
@@ -303,13 +375,13 @@ client.on('interactionCreate', async interaction => {
             const success = await queueTask(() => manageCrewMember(targetUser, platform, isBan ? 'ban' : 'kick'));
             if (success) {
                 membersCache = membersCache.filter(m => m.name !== targetUser);
-                await interaction.editReply(`🚫 **${targetUser}** (${platform.toUpperCase()}) è stato ${actionText} con successo dalla Crew Social Club!`);
+                await interaction.editReply(`🚫 **[EVREN CITY STAFF]** L'utente **${targetUser}** (${platform.toUpperCase()}) è stato **${actionText}** con successo dalla Crew!`);
             } else {
-                await interaction.editReply(`⚠️ Impossibile completare l'azione per **${targetUser}**. Verifica piattaforma o presenza nella Crew.`);
+                await interaction.editReply(`⚠️ Impossibile eseguire l'azione su **${targetUser}**. Controlla che la piattaforma selezionata sia corretta.`);
             }
         } catch (err) {
             console.error(err);
-            await interaction.editReply(`❌ Errore durante l'esecuzione del ${actionText}.`);
+            await interaction.editReply(`❌ Errore durante l'operazione di ${actionText}.`);
         }
     }
 });
