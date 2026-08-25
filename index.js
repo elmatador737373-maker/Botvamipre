@@ -12,7 +12,8 @@ const {
     SlashCommandBuilder,
     REST,
     Routes,
-    EmbedBuilder
+    EmbedBuilder,
+    ComponentType
 } = require('discord.js');
 const puppeteer = require('puppeteer');
 const fs = require('fs-extra');
@@ -74,6 +75,7 @@ const client = new Client({
 
 let page;
 let membersCache = [];
+let bannedCache = [];
 
 async function initSocialClub() {
     console.log("[Puppeteer] Avvio browser Chromium...");
@@ -93,12 +95,34 @@ async function initSocialClub() {
     
     page = await browser.newPage();
 
-    if (await fs.pathExists('./cookies.json')) {
+    if (process.env.COOKIES_JSON) {
+        try {
+            const cookies = JSON.parse(process.env.COOKIES_JSON);
+            await page.setCookie(...cookies);
+            console.log("[Social Club] Cookie di sessione caricati dalla variabile d'ambiente!");
+        } catch (e) {
+            console.error("⚠️ ERRORE durante il parsing della variabile COOKIES_JSON:", e);
+        }
+    } else if (await fs.pathExists('./cookies.json')) {
         const cookies = await fs.readJson('./cookies.json');
         await page.setCookie(...cookies);
-        console.log("[Social Club] Cookie di sessione caricati!");
+        console.log("[Social Club] Cookie di sessione caricati dal file locale!");
     } else {
-        console.error("⚠️ CRITICO: File cookies.json mancante! Esegui il primo avvio in locale per generarlo.");
+        console.error("⚠️ CRITICO: Cookie non trovati né nelle variabili d'ambiente (COOKIES_JSON) né su file locale!");
+    }
+}
+
+// --- FUNZIONE PER SPEDIRE LOG NEL CANALE DEDICATO ---
+async function sendLogMessage(embed) {
+    const logChannelId = process.env.LOG_CHANNEL_ID;
+    if (!logChannelId) return;
+    try {
+        const channel = await client.channels.fetch(logChannelId);
+        if (channel && channel.isTextBased()) {
+            await channel.send({ embeds: [embed] });
+        }
+    } catch (err) {
+        console.error("❌ Errore durante l'invio del messaggio nel canale Log:", err);
     }
 }
 
@@ -140,16 +164,40 @@ async function fetchCrewMembers() {
     return membersCache;
 }
 
+async function fetchBannedMembers() {
+    const bannedUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/banned`;
+    await page.goto(bannedUrl, { waitUntil: 'networkidle2' });
+
+    bannedCache = await page.evaluate(() => {
+        const cards = Array.from(document.querySelectorAll('.banned-card, .member-card'));
+        return cards.map(card => {
+            const name = card.querySelector('.banned-card-username, .member-card-username')?.textContent.trim() || '';
+            const platform = card.querySelector('.platform-icon')?.getAttribute('title')?.toLowerCase() || 'pc'; 
+            return { name, platform };
+        });
+    });
+
+    return bannedCache;
+}
+
 async function manageCrewMember(username, platform, action = 'kick') {
-    const membersUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/members`;
-    if (page.url() !== membersUrl) {
-        await page.goto(membersUrl, { waitUntil: 'networkidle2' });
+    let targetUrl;
+    if (action === 'unban') {
+        targetUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/banned`;
+    } else {
+        targetUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/members`;
+    }
+
+    if (page.url() !== targetUrl) {
+        await page.goto(targetUrl, { waitUntil: 'networkidle2' });
     }
 
     return await page.evaluate((targetUser, targetPlatform, actionType) => {
-        const cards = Array.from(document.querySelectorAll('.member-card'));
+        const cardSelector = actionType === 'unban' ? '.banned-card, .member-card' : '.member-card';
+        const cards = Array.from(document.querySelectorAll(cardSelector));
+
         for (const card of cards) {
-            const nameEl = card.querySelector('.member-card-username');
+            const nameEl = card.querySelector('.banned-card-username, .member-card-username');
             const platformEl = card.querySelector('.platform-icon');
             const userPlatform = platformEl ? platformEl.getAttribute('title')?.toLowerCase() : 'all';
 
@@ -157,17 +205,27 @@ async function manageCrewMember(username, platform, action = 'kick') {
             const matchesPlatform = targetPlatform === 'all' || (userPlatform && userPlatform.includes(targetPlatform));
 
             if (matchesUser && matchesPlatform) {
-                const menuBtn = card.querySelector('.member-options-btn');
-                if (menuBtn) menuBtn.click();
+                if (actionType === 'unban') {
+                    const unbanBtn = card.querySelector('button.unban-btn, button.remove-ban-btn');
+                    if (unbanBtn) {
+                        unbanBtn.click();
+                        const confirmBtn = document.querySelector('.modal-confirm-btn');
+                        if (confirmBtn) confirmBtn.click();
+                        return true;
+                    }
+                } else {
+                    const menuBtn = card.querySelector('.member-options-btn');
+                    if (menuBtn) menuBtn.click();
 
-                const targetBtnSelector = actionType === 'ban' ? 'button.ban-btn' : 'button.kick-btn';
-                const actionBtn = card.querySelector(targetBtnSelector);
+                    const targetBtnSelector = actionType === 'ban' ? 'button.ban-btn' : 'button.kick-btn';
+                    const actionBtn = card.querySelector(targetBtnSelector);
 
-                if (actionBtn) {
-                    actionBtn.click();
-                    const confirmBtn = document.querySelector('.modal-confirm-btn');
-                    if (confirmBtn) confirmBtn.click();
-                    return true;
+                    if (actionBtn) {
+                        actionBtn.click();
+                        const confirmBtn = document.querySelector('.modal-confirm-btn');
+                        if (confirmBtn) confirmBtn.click();
+                        return true;
+                    }
                 }
             }
         }
@@ -192,13 +250,22 @@ const kickCommand = new SlashCommandBuilder()
     .setName('kick_crew')
     .setDescription('[STAFF EVREN CITY] Espelle un membro dalla Crew Social Club')
     .addStringOption(opt => opt.setName('piattaforma').setDescription('Piattaforma dell\'utente').setRequired(true).addChoices(...choicesPiattaforma))
-    .addStringOption(opt => opt.setName('utente').setDescription('Seleziona utente').setRequired(true).setAutocomplete(true));
+    .addStringOption(opt => opt.setName('utente').setDescription('Seleziona utente').setRequired(true).setAutocomplete(true))
+    .addStringOption(opt => opt.setName('motivo').setDescription('Motivo dell\'espulsione').setRequired(false));
 
 const banCommand = new SlashCommandBuilder()
     .setName('ban_crew')
     .setDescription('[STAFF EVREN CITY] Banna e blocca un membro dalla Crew Social Club')
     .addStringOption(opt => opt.setName('piattaforma').setDescription('Piattaforma dell\'utente').setRequired(true).addChoices(...choicesPiattaforma))
-    .addStringOption(opt => opt.setName('utente').setDescription('Seleziona utente').setRequired(true).setAutocomplete(true));
+    .addStringOption(opt => opt.setName('utente').setDescription('Seleziona utente').setRequired(true).setAutocomplete(true))
+    .addStringOption(opt => opt.setName('motivo').setDescription('Motivo del ban').setRequired(false));
+
+const unbanCommand = new SlashCommandBuilder()
+    .setName('unban_crew')
+    .setDescription('[STAFF EVREN CITY] Sblocca un membro bannato dalla Crew Social Club')
+    .addStringOption(opt => opt.setName('piattaforma').setDescription('Piattaforma dell\'utente').setRequired(true).addChoices(...choicesPiattaforma))
+    .addStringOption(opt => opt.setName('utente').setDescription('Seleziona utente bannato').setRequired(true).setAutocomplete(true))
+    .addStringOption(opt => opt.setName('motivo').setDescription('Motivo dello sblocco').setRequired(false));
 
 // --- 6. EVENTO READY & REGISTRAZIONE COMANDI ---
 
@@ -209,7 +276,7 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(
         Routes.applicationCommands(client.user.id), 
-        { body: [setupCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON()] }
+        { body: [setupCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(), unbanCommand.toJSON()] }
     );
     console.log("[Evren City] Comandi registrati!");
 });
@@ -223,20 +290,30 @@ client.on('interactionCreate', async interaction => {
         return member.roles.cache.has(process.env.STAFF_ROLE_ID) || member.permissions.has('Administrator');
     };
 
-    // 1. AUTOCOMPLETE COMANDI KICK / BAN
+    // 1. AUTOCOMPLETE COMANDI KICK / BAN / UNBAN
     if (interaction.isAutocomplete()) {
         const { commandName } = interaction;
-        if (commandName === 'kick_crew' || commandName === 'ban_crew') {
+        if (commandName === 'kick_crew' || commandName === 'ban_crew' || commandName === 'unban_crew') {
             if (!checkStaffPermission(interaction.member)) return;
 
             const selectedPlatform = interaction.options.getString('piattaforma') || 'all';
             const focusedValue = interaction.options.getFocused().toLowerCase();
 
-            if (membersCache.length === 0) {
-                await queueTask(() => fetchCrewMembers());
+            let targetCache = [];
+
+            if (commandName === 'unban_crew') {
+                if (bannedCache.length === 0) {
+                    await queueTask(() => fetchBannedMembers());
+                }
+                targetCache = bannedCache;
+            } else {
+                if (membersCache.length === 0) {
+                    await queueTask(() => fetchCrewMembers());
+                }
+                targetCache = membersCache;
             }
 
-            const filtered = membersCache.filter(m => {
+            const filtered = targetCache.filter(m => {
                 const matchPlatform = selectedPlatform === 'all' || m.platform.includes(selectedPlatform);
                 const matchName = m.name.toLowerCase().includes(focusedValue);
                 return matchPlatform && matchName;
@@ -299,7 +376,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.showModal(modal);
     }
 
-    // 4. INVIO MODAL -> ELABORAZIONE E NOTIFICHE DM
+    // 4. INVIO MODAL -> ELABORAZIONE E NOTIFICHE DM + LOG
     if (interaction.isModalSubmit() && interaction.customId === 'modal_richiesta_crew') {
         const scUsername = interaction.fields.getTextInputValue('input_sc_username').trim();
         await interaction.deferReply({ ephemeral: true });
@@ -308,7 +385,7 @@ client.on('interactionCreate', async interaction => {
         try {
             const startEmbed = new EmbedBuilder()
                 .setTitle('⏳ Richiesta in Elaborazione — Evren City RP')
-                .setDescription(`Abbiamo preso in carico la tua richiesta per l'account Social Club: **${scUsername}**.\nIl sistema stà verificando sul Social Club di Rockstar...`)
+                .setDescription(`Abbiamo preso in carico la tua richiesta per l'account Social Club: **${scUsername}**.\nIl sistema sta verificando sul Social Club di Rockstar...`)
                 .setColor('#f1c40f');
             await interaction.user.send({ embeds: [startEmbed] });
         } catch (e) {
@@ -328,9 +405,19 @@ client.on('interactionCreate', async interaction => {
                         .setDescription(`Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\nBuon Roleplay in città! 🏙️`)
                         .setColor('#2ecc71');
                     await interaction.user.send({ embeds: [successEmbed] });
-                } catch (e) {
-                    console.log(`Impossibile inviare DM di successo a ${interaction.user.tag}`);
-                }
+                } catch (e) {}
+
+                // LOG AUDIT CANALE DEDICATO
+                const logEmbed = new EmbedBuilder()
+                    .setTitle('🟢 LOG: Ingresso Crew Approvato')
+                    .addFields(
+                        { name: 'Utente Discord', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: true },
+                        { name: 'Account Social Club', value: `\`${scUsername}\``, inline: true },
+                        { name: 'Data & Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
+                    )
+                    .setColor('#2ecc71')
+                    .setTimestamp();
+                await sendLogMessage(logEmbed);
 
             } else {
                 // Notifica DM: Errore / Non Trovato
@@ -346,9 +433,18 @@ client.on('interactionCreate', async interaction => {
                         )
                         .setColor('#e74c3c');
                     await interaction.user.send({ embeds: [failEmbed] });
-                } catch (e) {
-                    console.log(`Impossibile inviare DM di errore a ${interaction.user.tag}`);
-                }
+                } catch (e) {}
+
+                // LOG AUDIT FALLIMENTO
+                const logEmbed = new EmbedBuilder()
+                    .setTitle('🟡 LOG: Ingresso Crew Fallito (Nessuna Richiesta Pendente)')
+                    .addFields(
+                        { name: 'Utente Discord', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: true },
+                        { name: 'Account Cercato', value: `\`${scUsername}\``, inline: true }
+                    )
+                    .setColor('#f1c40f')
+                    .setTimestamp();
+                await sendLogMessage(logEmbed);
             }
         } catch (err) {
             console.error(err);
@@ -358,31 +454,139 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 5. COMANDI STAFF (KICK & BAN)
-    if (interaction.isChatInputCommand() && (interaction.commandName === 'kick_crew' || interaction.commandName === 'ban_crew')) {
+    // 5. COMANDI STAFF (KICK, BAN, UNBAN) CON PULSANTI DI CONFERMA E LOG
+    if (interaction.isChatInputCommand() && (interaction.commandName === 'kick_crew' || interaction.commandName === 'ban_crew' || interaction.commandName === 'unban_crew')) {
         if (!checkStaffPermission(interaction.member)) {
             return interaction.reply({ content: '❌ Non possiedi il ruolo Staff necessario per eseguire questa azione.', ephemeral: true });
         }
 
+        const commandName = interaction.commandName;
         const platform = interaction.options.getString('piattaforma');
         const targetUser = interaction.options.getString('utente');
-        const isBan = interaction.commandName === 'ban_crew';
-        const actionText = isBan ? 'bannato' : 'espulso';
+        const reason = interaction.options.getString('motivo') || 'Nessun motivo specificato';
 
-        await interaction.deferReply({ ephemeral: true });
+        let actionType = 'kick';
+        let actionTitle = 'Espulsione (Kick)';
+        let colorHex = '#e67e22';
 
-        try {
-            const success = await queueTask(() => manageCrewMember(targetUser, platform, isBan ? 'ban' : 'kick'));
-            if (success) {
-                membersCache = membersCache.filter(m => m.name !== targetUser);
-                await interaction.editReply(`🚫 **[EVREN CITY STAFF]** L'utente **${targetUser}** (${platform.toUpperCase()}) è stato **${actionText}** con successo dalla Crew!`);
-            } else {
-                await interaction.editReply(`⚠️ Impossibile eseguire l'azione su **${targetUser}**. Controlla che la piattaforma selezionata sia corretta.`);
-            }
-        } catch (err) {
-            console.error(err);
-            await interaction.editReply(`❌ Errore durante l'operazione di ${actionText}.`);
+        if (commandName === 'ban_crew') {
+            actionType = 'ban';
+            actionTitle = 'Blocco permanente (Ban)';
+            colorHex = '#e74c3c';
+        } else if (commandName === 'unban_crew') {
+            actionType = 'unban';
+            actionTitle = 'Sblocco (Unban)';
+            colorHex = '#3498db';
         }
+
+        // EMBED E PULSANTI DI CONFERMA
+        const confirmEmbed = new EmbedBuilder()
+            .setTitle(`⚠️ Conferma ${actionTitle}`)
+            .setDescription(
+                `Sei sicuro di voler eseguire l'azione **${actionTitle.toUpperCase()}** per il seguente membro della Crew Social Club?\n\n` +
+                `• **Utente Social Club:** \`${targetUser}\`\n` +
+                `• **Piattaforma:** \`${platform.toUpperCase()}\`\n` +
+                `• **Motivo:** ${reason}\n\n` +
+                `*Questa operazione interagirà direttamente con il Social Club di Rockstar.*`
+            )
+            .setColor(colorHex);
+
+        const confirmBtn = new ButtonBuilder()
+            .setCustomId('confirm_action')
+            .setLabel('Conferma Operazione')
+            .setStyle(commandName === 'ban_crew' ? ButtonStyle.Danger : ButtonStyle.Primary);
+
+        const cancelBtn = new ButtonBuilder()
+            .setCustomId('cancel_action')
+            .setLabel('Annulla')
+            .setStyle(ButtonStyle.Secondary);
+
+        const row = new ActionRowBuilder().addComponents(confirmBtn, cancelBtn);
+
+        const response = await interaction.reply({
+            embeds: [confirmEmbed],
+            components: [row],
+            ephemeral: true
+        });
+
+        // COLLECTOR PER I PULSANTI (Tempo limite: 30 secondi)
+        const collector = response.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            time: 30000
+        });
+
+        collector.on('collect', async btnInteraction => {
+            if (btnInteraction.customId === 'cancel_action') {
+                await btnInteraction.update({
+                    content: '❌ Operazione annullata.',
+                    embeds: [],
+                    components: []
+                });
+                return;
+            }
+
+            if (btnInteraction.customId === 'confirm_action') {
+                await btnInteraction.update({
+                    content: `⏳ Esecuzione dell'azione **${actionTitle}** in corso...`,
+                    embeds: [],
+                    components: []
+                });
+
+                try {
+                    const success = await queueTask(() => manageCrewMember(targetUser, platform, actionType));
+
+                    if (success) {
+                        // Aggiorna le cache locali
+                        if (actionType === 'unban') {
+                            bannedCache = bannedCache.filter(m => m.name !== targetUser);
+                        } else {
+                            membersCache = membersCache.filter(m => m.name !== targetUser);
+                        }
+
+                        await btnInteraction.editReply({
+                            content: `✅ **[EVREN CITY STAFF]** L'azione **${actionTitle}** su **${targetUser}** (${platform.toUpperCase()}) è stata eseguita con successo su Rockstar Social Club!`
+                        });
+
+                        // AUDIT LOG NEL CANALE DEDICATO
+                        const logEmbed = new EmbedBuilder()
+                            .setTitle(`🔴 LOG: ${actionTitle} Eseguito`)
+                            .addFields(
+                                { name: 'Staffer', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: true },
+                                { name: 'Utente Social Club', value: `\`${targetUser}\``, inline: true },
+                                { name: 'Piattaforma', value: `\`${platform.toUpperCase()}\``, inline: true },
+                                { name: 'Motivo', value: reason, inline: false },
+                                { name: 'Data & Ora', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
+                            )
+                            .setColor(colorHex)
+                            .setTimestamp();
+
+                        await sendLogMessage(logEmbed);
+
+                    } else {
+                        await btnInteraction.editReply({
+                            content: `⚠️ Impossibile completare l'azione per **${targetUser}**. Verifica che l'utente esista nella lista ${actionType === 'unban' ? 'bannati' : 'membri'} sulla piattaforma selezionata.`
+                        });
+                    }
+                } catch (err) {
+                    console.error(err);
+                    await btnInteraction.editReply({
+                        content: `❌ Errore durante l'esecuzione dell'operazione di ${actionTitle}.`
+                    });
+                }
+            }
+        });
+
+        collector.on('end', async (collected, reason) => {
+            if (reason === 'time' && collected.size === 0) {
+                try {
+                    await interaction.editReply({
+                        content: '⏱️ Tempo scaduto. L\'operazione è stata annullata automaticamente.',
+                        embeds: [],
+                        components: []
+                    });
+                } catch (e) {}
+            }
+        });
     }
 });
 
