@@ -285,9 +285,9 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
     
-    // VERIFICA RUOLO STAFF PER I COMANDI
+    // VERIFICA RUOLO STAFF PER I COMANDI (Aggiornato con ROLE_STAFF_ID)
     const checkStaffPermission = (member) => {
-        return member.roles.cache.has(process.env.STAFF_ROLE_ID) || member.permissions.has('Administrator');
+        return member.roles.cache.has(process.env.ROLE_STAFF_ID) || member.permissions.has('Administrator');
     };
 
     // 1. AUTOCOMPLETE COMANDI KICK / BAN / UNBAN
