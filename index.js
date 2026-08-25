@@ -117,9 +117,7 @@ async function initSocialClub() {
         console.log("[Social Club] Controllo stato di autenticazione sul Social Club...");
         await page.goto(`https://socialclub.rockstargames.com/`, { waitUntil: 'networkidle2', timeout: 45000 });
         
-        // Estrae il nickname o lo stato di login dalla pagina
         const loggedUsername = await page.evaluate(() => {
-            // Cerca elementi tipici del profilo loggato sul Social Club
             const profileEl = document.querySelector('.profile-name, [data-analytics-action="Profile"], .user-name');
             return profileEl ? profileEl.textContent.trim() : null;
         });
@@ -356,12 +354,12 @@ client.on('interactionCreate', async interaction => {
         const embed = new EmbedBuilder()
             .setTitle('🏙️ EVREN CITY RP — Gestione Crew Ufficiale')
             .setDescription(
-                'Benvenuto nella gestione automatica della Crew Ufficiale di **Evren City RP**!\n\n' +
-                '**Istruzioni per l\'ingresso:**\n' +
-                '1️⃣ Vai sul Social Club di Rockstar o in-game e invia la richiesta alla nostra Crew.\n' +
-                '2️⃣ Clicca sul pulsante **"Richiedi Approvazione"** qui sotto.\n' +
-                '3️⃣ Inserisci il tuo nickname preciso del Social Club.\n\n' +
-                '*Il sistema elaborerà la tua richiesta e ti notificherà lo stato direttamente in Messaggio Privato (DM).*'
+                `Benvenuto nella gestione automatica della Crew Ufficiale di **Evren City RP**!\n\n` +
+                `**Istruzioni per l'ingresso:**\n` +
+                `1️⃣ Vai sul Social Club di Rockstar o in-game e invia la richiesta alla nostra Crew.\n` +
+                `2️⃣ Clicca sul pulsante **"Richiedi Approvazione"** qui sotto.\n` +
+                `3️⃣ Inserisci il tuo nickname preciso del Social Club.\n\n` +
+                `*Il sistema elaborerà la tua richiesta e ti notificherà lo stato direttamente in Messaggio Privato (DM).*`
             )
             .setColor('#2b2d31')
             .setFooter({ text: 'Evren City RP — Automation Bot' });
@@ -422,10 +420,10 @@ client.on('interactionCreate', async interaction => {
                         .setTitle('✅ Richiesta Approvata — Evren City RP')
                         .setDescription(
                             `Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\n` +
-                            '**🎮 Cosa devi fare adesso:**\n' +
-                            '1. Torna sulla pagina della Crew cliccando qui: [Apri la Crew sul Social Club](${crewUrl})\n` +
-                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n` +
-                            'Buon Roleplay in città! 🏙️'
+                            `**🎮 Cosa devi fare adesso:**\n` +
+                            `1. Torna sulla pagina della Crew cliccando qui: [Apri la Crew sul Social Club](${crewUrl})\n` +
+                            `2. Accetta l'invito ufficiale (o entra in-game su GTA) per completare l'ingresso.\n\n` +
+                            `Buon Roleplay in città! 🏙️`
                         )
                         .setColor('#2ecc71');
                     await interaction.user.send({ embeds: [successEmbed] });
@@ -449,11 +447,11 @@ client.on('interactionCreate', async interaction => {
                         .setTitle('⚠️ Richiesta Non Trovata — Evren City RP')
                         .setDescription(
                             `Non siamo riusciti a trovare nessuna richiesta pendente per **${scUsername}**.\n\n` +
-                            '**⚠️ Cosa devi fare adesso:**\n' +
+                            `**⚠️ Cosa devi fare adesso:**\n` +
                             `1. Assicurati di andare sulla pagina della nostra Crew su Rockstar Social Club ([clicca qui per aprirla](${crewUrl})) o direttamente in-game.\n` +
-                            '2. Invia la richiesta per unirti/accettare l\'invito.\n' +
-                            '3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n' +
-                            '4. Torna sul server Discord di Evren City e riprova a cliccare sul pulsante!'
+                            `2. Invia la richiesta per unirti/accettare l'invito.\n` +
+                            `3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n` +
+                            `4. Torna sul server Discord di Evren City e riprova a cliccare sul pulsante!`
                         )
                         .setColor('#e74c3c');
                     await interaction.user.send({ embeds: [failEmbed] });
