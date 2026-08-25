@@ -408,7 +408,7 @@ client.on('interactionCreate', async interaction => {
                             `Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\n` +
                             '**🎮 Cosa devi fare adesso:**\n' +
                             `1. Torna sulla pagina della Crew cliccando qui: [Apri la Crew sul Social Club](${crewUrl})\n` +
-                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n` +
+                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n' +
                             'Buon Roleplay in città! 🏙️'
                         )
                         .setColor('#2ecc71');
@@ -437,8 +437,8 @@ client.on('interactionCreate', async interaction => {
                             `Non siamo riusciti a trovare nessuna richiesta pendente per **${scUsername}**.\n\n` +
                             '**⚠️ Cosa devi fare adesso:**\n' +
                             `1. Assicurati di andare sulla pagina della nostra Crew su Rockstar Social Club ([clicca qui per aprirla](${crewUrl})) o direttamente in-game.\n` +
-                            '2. Invia la richiesta per unirti/accettare l\'invito.\n` +
-                            '3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n` +
+                            '2. Invia la richiesta per unirti/accettare l\'invito.\n' +
+                            '3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n' +
                             '4. Torna sul server Discord di Evren City e riprova a cliccare sul pulsante!'
                         )
                         .setColor('#e74c3c');
