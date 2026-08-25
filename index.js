@@ -1,28 +1,34 @@
 require('dotenv').config();
 const express = require('express');
 const { chromium } = require('playwright');
+const { createClient } = require('@supabase/supabase-js');
 const { 
     Client, 
     GatewayIntentBits, 
     ActionRowBuilder, 
     ButtonBuilder, 
     ButtonStyle, 
-    ModalBuilder, 
-    TextInputBuilder, 
-    TextInputStyle, 
     SlashCommandBuilder,
     REST,
     Routes,
     EmbedBuilder,
-    MessageFlags
+    MessageFlags,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    StringSelectMenuBuilder,
+    StringSelectMenuOptionBuilder
 } = require('discord.js');
 
-// --- 1. SERVER WEB HTTP (PER RENDER & UPTIME ROBOT) ---
+// --- 1. CONFIGURAZIONE SUPABASE & SERVER WEB HTTP ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Inizializzazione client Supabase (utilizza SUPABASE_URL e SUPABASE_KEY dal file .env)
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
 app.get('/', (req, res) => {
-    res.send('Evren City RP - Crew Manager Bot Online (Delay Between Approvals Edition)!');
+    res.send('Evren City RP - Crew Manager Bot Online (Supabase Database Edition)!');
 });
 
 app.listen(PORT, () => {
@@ -38,8 +44,6 @@ const randomSleep = (min = 4000, max = 8000) => {
     return new Promise((resolve) => setTimeout(resolve, ms));
 };
 
-const pendingRequests = []; 
-
 function queueTask(taskFunction) {
     return new Promise((resolve, reject) => {
         taskQueue.push({ taskFunction, resolve, reject });
@@ -52,7 +56,7 @@ async function processQueue() {
     isProcessingQueue = true;
     const { taskFunction, resolve, reject } = taskQueue.shift();
     try {
-        await randomSleep(4000, 7000); // Ritardo randomizzato anti-ban tra le task generali
+        await randomSleep(4000, 7000); 
         const result = await taskFunction();
         resolve(result);
     } catch (error) {
@@ -135,7 +139,7 @@ async function getAuthenticatedPage() {
       },
       {
         "name": "BearerToken",
-        "value": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjdmNmQwNDRlLTBmNGMtNGM3ZS04NDk0LWUyYzBkZWM1YWE4ZiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiIzMDYxODk5MjUiLCJyb2Nrc3RhckF1dGguUnVpZCI6IjEyNDgwZTE4ZDQyODQwNjg4N2JiNTQxYjk4OTE4MTUzIiwianRpIjoiYjQ2NTI5N2EtNTQ5ZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcE1lU2lnbmVkSW4iOiJUcnVlIiwic2NBdXRoLlRva2VuU3RvcmFnZVR0bCI6IjI1OTIwMDAiLCJzY0F1dGguSXNBTWlub3IiOiJGYWxzZSIsInNjQXV0aC5OaWNrbmFtZSI6IkV2cmVuTWFuYWdlbWVudCIsInNjQXV0aC5BdmF0YXJVcmwiOiJodHRwczovL3Byb2QtYXZhdGFycy5ha2FtYWl6ZWQubmV0L3N0b2NrLWF2YXtvcnMvbi9HVEFWL2d0YXYwMi5wbmciLCJzY0F1dGguSXNFbWFpbFZlcmlmaWVkIjoiVHJ1ZSIsInNjQXV0aC5NZW1iZXJTaW5jZSI6IjIwMjYtMDgtMjVUMTQ6NTQ6NTIuNzYwMDAwMFoiLCJuYmYiOjE3ODc2NzQyNjIsImF1ZCI6WyJodHRwczovL3d3dy5yb2Nrc3RhcmdhbWVzLmNvbSIsImh0dHBzOi8vc2NhcGkucm9ja3N0YXJnYW1lcy5jb20iLCJyb2Nrc3tarHNlcnZpY2VzIl0sInNjb3BlIjoic2NhcGk6KiBzY3M6dXBkYXRlUHJvZmlsZSIsImV4cCI6MTc4NzY3NDU2MiwiaWF0IjoxNzg3Njc0MjYyLCJpc3MiOiJodHRwczovLw==",
+        "value": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjdmNmQwNDRlLTBmNGMtNGM3ZS04NDk0LWUyYzBkZWM1YWE4ZiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiIzMDYxODk5MjUiLCJyb2Nrc3RhckF1dGguUnVpZCI6IjEyNDgwZTE4ZDQyODQwNjg4N2JiNTQxYjk4OTE4MTUzIiwianRpIjoiYjQ2NTI5N2EtNTQ5ZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZW5kSW4iOiJUcnVlIiwic2NBdXRoLlRva2VuU3RvcmFnZVR0bCI6IjI1OTIwMDAiLCJzY0F1dGguSXNBTWlub3IiOiJGYWxzZSIsInNjQXV0aC5OaWNrbmFtZSI6IkV2cmVuTWFuYWdlbWVudCIsInNjQXV0aC5BdmF0YXJVcmwiOiJodHRwczovL3Byb2QtYXZhdGFycy5ha2FtYWl6ZWQubmV0L3N0b2NrLWF2YXtvcnMvbi/HVEFWL2d0YXYwMi5wbmciLCJzY0F1dGguSXNFbWFpbFZlcmlmaWVkIjoiVHJ1ZSIsInNjQXV0aC5NZW1iZXJSinNlciI6IjIwMjYtMDgtMjVUMTQ6NTQ6NTIuNzYwMDAwMFoiLCJuYmYiOjE3ODc2NzQyNjIsImF1ZCI6WyJodHRwczovL3d3dy5yb2Nrc3RhcmdhbWVzLmNvbSIsImh0dHBzOi8vc2NhcGkucm9ja3N0YXJnYW1lcy5jb20iLCJyb2Nrc3tarHNlcnZpY2VzIl0sInNjb3BlIjoic2NhcGk6KiBzY3M6dXBkYXRlUHJvZmlsZSIsImV4cCI6MTc4NzY3NDU2MiwiaWF0IjoxNzg3Njc0MjYyLCJpc3MiOiJodHRwczovLw==",
         "domain": "www.rockstargames.com",
         "path": "/"
       },
@@ -182,7 +186,7 @@ async function sendLogMessage(embed) {
     }
 }
 
-// --- 4. FUNZIONI SOCIAL CLUB ---
+// --- 4. FUNZIONI SOCIAL CLUB & SUPABASE ---
 
 async function verifyLogin() {
     const { browser, page } = await getAuthenticatedPage();
@@ -205,6 +209,31 @@ async function verifyLogin() {
     }
 }
 
+async function verifyRockstarAccountLink(inputId, accountType) {
+    const { browser, page } = await getAuthenticatedPage();
+    try {
+        let targetUrl = 'https://socialclub.rockstargames.com/settings/linkedaccounts';
+        if (accountType === 'rockstar') {
+            targetUrl = 'https://socialclub.rockstargames.com/';
+        }
+
+        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+        await randomSleep(3000, 5000);
+
+        const found = await page.evaluate((idToCheck) => {
+            const bodyText = document.body.innerText || '';
+            return bodyText.toLowerCase().includes(idToCheck.toLowerCase());
+        }, inputId);
+
+        return found;
+    } catch (e) {
+        console.error("Errore durante la verifica dell'account Rockstar:", e);
+        return true; 
+    } finally {
+        await browser.close();
+    }
+}
+
 async function fetchCrewMembers() {
     const { browser, page } = await getAuthenticatedPage();
     try {
@@ -218,13 +247,13 @@ async function fetchCrewMembers() {
                 const nameEl = r.querySelector('.name, .nickname, [data-name]');
                 const name = nameEl ? nameEl.innerText.trim() : r.innerText.trim();
                 if (name && name.length > 2 && name.length < 30) {
-                    list.push({ name, platform: 'pc' });
+                    list.push({ name, platform: 'ps' });
                 }
             });
             return list;
         });
 
-        membersCache = members.length > 0 ? members : [{ name: 'MembroEsempio', platform: 'pc' }];
+        membersCache = members.length > 0 ? members : [{ name: 'MembroEsempio', platform: 'ps' }];
         return membersCache;
     } catch (e) {
         console.error("Errore fetch membri:", e);
@@ -248,10 +277,14 @@ async function fetchBannedMembers() {
     }
 }
 
-// Controllo richieste con intervallo randomizzato tra un'approvazione e l'altra
+// Controllo richieste sincronizzato con Supabase
 async function processCrewInvites() {
     const { browser, page } = await getAuthenticatedPage();
     try {
+        // Legge le richieste attive direttamente da Supabase
+        const { data: pendingRequests, error: dbError } = await supabase.from('pending_requests').select('*');
+        if (dbError || !pendingRequests || pendingRequests.length === 0) return;
+
         await page.goto(`https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`, { waitUntil: 'networkidle', timeout: 30000 });
         await randomSleep(3000, 5000);
 
@@ -271,11 +304,10 @@ async function processCrewInvites() {
         if (!webRequests || webRequests.length === 0) return;
 
         for (let reqText of webRequests) {
-            const matchedUserIndex = pendingRequests.findIndex(p => reqText.toLowerCase().includes(p.gameId.toLowerCase()));
+            const matchedUser = pendingRequests.find(p => reqText.toLowerCase().includes(p.game_id.toLowerCase()));
 
-            if (matchedUserIndex !== -1) {
-                const reqData = pendingRequests[matchedUserIndex];
-                console.log(`[Watcher] Trovata richiesta autorizzata per: ${reqData.gameId} (${reqData.platformType.toUpperCase()})`);
+            if (matchedUser) {
+                console.log(`[Watcher] Trovata richiesta autorizzata per: ${matchedUser.game_id} (${matchedUser.account_type})`);
 
                 const approved = await page.evaluate((targetId) => {
                     const rows = document.querySelectorAll('tr, .member-row, [data-member-row], div');
@@ -286,18 +318,18 @@ async function processCrewInvites() {
                         }
                     }
                     return false;
-                }, reqData.gameId);
+                }, matchedUser.game_id);
 
                 if (approved) {
-                    // ⏱️ INTERVALLO RANDOM TRA UN'APPROVAZIONE E L'ALTRA (es. 4000ms - 8000ms)
                     await randomSleep(4000, 8000);
                     
-                    pendingRequests.splice(matchedUserIndex, 1);
+                    // Rimuove la richiesta da Supabase dopo l'approvazione
+                    await supabase.from('pending_requests').delete().eq('discord_user_id', matchedUser.discord_user_id);
 
                     const crewLink = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}`;
                     const dmEmbedSuccess = new EmbedBuilder()
                         .setTitle('✅ Richiesta Crew Approvata!')
-                        .setDescription(`Ottime notizie, **${reqData.discordUsername}**! Il sistema ha verificato la richiesta sul Social Club per l'ID \`${reqData.gameId}\` (${reqData.platformType.toUpperCase()}) e l'ha **approvata in tempo reale**!`)
+                        .setDescription(`Ottime notizie, **${matchedUser.discord_username}**! Il sistema ha verificato il tuo account **${matchedUser.account_type.toUpperCase()}** (${matchedUser.game_id}) sul Social Club ed è stata **approvata in tempo reale**!`)
                         .addFields(
                             { name: '📌 Ultimo Passo', value: `Ora non ti resta che **cliccare sul link ed accettare l'invito ufficiale**:\n🔗 [Apri la Crew sul Social Club](${crewLink})`, inline: false }
                         )
@@ -305,7 +337,7 @@ async function processCrewInvites() {
                         .setTimestamp();
 
                     try {
-                        const user = await client.users.fetch(reqData.discordUserId);
+                        const user = await client.users.fetch(matchedUser.discord_user_id);
                         await user.send({ embeds: [dmEmbedSuccess] });
                     } catch (err) {
                         console.error("Impossibile inviare DM all'utente:", err);
@@ -315,9 +347,9 @@ async function processCrewInvites() {
                         .setTitle('🟢 LOG: Richiesta Crew Approvata')
                         .setColor('#57F287')
                         .addFields(
-                            { name: 'Utente Discord', value: `${reqData.discordUsername} (<@${reqData.discordUserId}>)`, inline: false },
-                            { name: 'ID Riconosciuto', value: reqData.gameId, inline: true },
-                            { name: 'Piattaforma', value: reqData.platformType.toUpperCase(), inline: true }
+                            { name: 'Utente Discord', value: `${matchedUser.discord_username} (<@${matchedUser.discord_user_id}>)`, inline: false },
+                            { name: 'ID Inserito', value: matchedUser.game_id, inline: true },
+                            { name: 'Tipo Account', value: matchedUser.account_type.toUpperCase(), inline: true }
                         )
                         .setTimestamp()
                     ).catch(() => {});
@@ -334,13 +366,12 @@ async function processCrewInvites() {
                     }
                 });
                 
-                // ⏱️ Intervallo random anche dopo un rifiuto per sicurezza anti-ban
                 await randomSleep(3000, 6000);
 
                 await sendLogMessage(new EmbedBuilder()
-                    .setTitle('🔴 LOG: Richiesta Crew Rifiutata (Non registrato su Discord)')
+                    .setTitle('🔴 LOG: Richiesta Crew Rifiutata (ID non verificato)')
                     .setColor('#ED4245')
-                    .setDescription(`Il bot ha trovato una richiesta sul Social Club non associata ad alcun utente in coda sul pannello ed è stata rifiutata automaticamente.`)
+                    .setDescription(`Il bot ha trovato una richiesta sul Social Club non associata ad alcun ID registrato tramite il pannello ed è stata rifiutata automaticamente.`)
                     .setTimestamp()
                 ).catch(() => {});
             }
@@ -352,7 +383,6 @@ async function processCrewInvites() {
     }
 }
 
-// Background Worker con intervallo random (tra 75 e 110 secondi)
 async function startPendingWatcher() {
     const runWorker = async () => {
         await queueTask(() => processCrewInvites());
@@ -363,7 +393,7 @@ async function startPendingWatcher() {
     setTimeout(runWorker, initialDelay);
 }
 
-async function manageCrewMember(username, platform, action = 'kick') {
+async function manageCrewMember(username, action = 'kick') {
     const { browser, page } = await getAuthenticatedPage();
     try {
         let targetUrl = action === 'unban' 
@@ -416,23 +446,17 @@ async function manageCrewMember(username, platform, action = 'kick') {
 
 // --- 5. COMANDI DISCORD ---
 
-const setupCommand = new SlashCommandBuilder().setName('setup_pannello').setDescription('[STAFF] Invia pannello Crew');
+const setupCommand = new SlashCommandBuilder().setName('setup_pannello').setDescription('[STAFF] Invia pannello Crew PlayStation');
 const testLoginCommand = new SlashCommandBuilder().setName('test_login').setDescription('[STAFF] Test login Playwright');
 
-const choicesPiattaforma = [
-    { name: 'Tutte', value: 'all' },
-    { name: 'PC', value: 'pc' },
-    { name: 'PlayStation', value: 'ps' }
-];
-
-const kickCommand = new SlashCommandBuilder().setName('kick_crew').setDescription('[STAFF] Espelli utente').addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma)).addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
-const banCommand = new SlashCommandBuilder().setName('ban_crew').setDescription('[STAFF] Banna utente').addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma)).addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
-const unbanCommand = new SlashCommandBuilder().setName('unban_crew').setDescription('[STAFF] Sblocca utente').addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma)).addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
-const promoteCommand = new SlashCommandBuilder().setName('promote_crew').setDescription('[STAFF] Promuovi utente').addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma)).addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
-const demoteCommand = new SlashCommandBuilder().setName('demote_crew').setDescription('[STAFF] Degrada utente').addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma)).addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
+const kickCommand = new SlashCommandBuilder().setName('kick_crew').setDescription('[STAFF] Espelli utente PS').addStringOption(o => o.setName('utente').setDescription('ID').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
+const banCommand = new SlashCommandBuilder().setName('ban_crew').setDescription('[STAFF] Banna utente PS').addStringOption(o => o.setName('utente').setDescription('ID').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
+const unbanCommand = new SlashCommandBuilder().setName('unban_crew').setDescription('[STAFF] Sblocca utente PS').addStringOption(o => o.setName('utente').setDescription('ID').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
+const promoteCommand = new SlashCommandBuilder().setName('promote_crew').setDescription('[STAFF] Promuovi utente PS').addStringOption(o => o.setName('utente').setDescription('ID').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
+const demoteCommand = new SlashCommandBuilder().setName('demote_crew').setDescription('[STAFF] Degrada utente PS').addStringOption(o => o.setName('utente').setDescription('ID').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
 
 client.once('clientReady', async () => {
-    console.log(`[Evren City] Bot connesso come ${client.user.tag} (Delay Between Approvals Ready)`);
+    console.log(`[Evren City] Bot connesso come ${client.user.tag} (Supabase Persistence Edition)`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(Routes.applicationCommands(client.user.id), { 
         body: [
@@ -455,7 +479,6 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isAutocomplete()) {
         if (!checkStaff(interaction.member)) return interaction.respond([]);
-        const platform = interaction.options.getString('piattaforma') || 'all';
         const focused = interaction.options.getFocused().toLowerCase();
         let cache = interaction.commandName === 'unban_crew' ? bannedCache : membersCache;
 
@@ -463,8 +486,8 @@ client.on('interactionCreate', async interaction => {
             cache = interaction.commandName === 'unban_crew' ? await fetchBannedMembers() : await fetchCrewMembers();
         }
 
-        const filtered = cache.filter(m => (platform === 'all' || m.platform.includes(platform)) && m.name.toLowerCase().includes(focused));
-        await interaction.respond(filtered.slice(0, 25).map(m => ({ name: `${m.name} (${m.platform.toUpperCase()})`, value: m.name })));
+        const filtered = cache.filter(m => m.name.toLowerCase().includes(focused));
+        await interaction.respond(filtered.slice(0, 25).map(m => ({ name: `${m.name}`, value: m.name })));
         return;
     }
 
@@ -484,79 +507,117 @@ client.on('interactionCreate', async interaction => {
         if (!checkStaff(interaction.member)) return interaction.reply({ content: '❌ Non sei autorizzato.', flags: [MessageFlags.Ephemeral] });
         
         const embed = new EmbedBuilder()
-            .setTitle('🏙️ EVREN CITY RP — Sistema Ingresso Crew Ufficiale')
-            .setDescription('Benvenuto nel pannello automatizzato della Crew! Segui questi passaggi per entrare a far parte della fazione:\n\n' +
+            .setTitle('🏙️ EVREN CITY RP — Sistema Ingresso Crew')
+            .setDescription('Benvenuto nel pannello ufficiale della fazione!\n\n' +
                 '1️⃣ **Clicca sul pulsante** sottostante per aprire il modulo di registrazione.\n' +
-                '2️⃣ Inserisci il tuo **ID esatto** (es. PSN ID se giochi da PlayStation, o Social Club ID se giochi da PC) e la tua **piattaforma** (`ps` oppure `pc`).\n' +
-                '3️⃣ Vai sul sito ufficiale di **Rockstar Social Club** e invia la richiesta di partecipazione alla nostra Crew.\n' +
-                '4️⃣ **Il sistema controllerà subito se la richiesta è già presente** o ti aggiornerà in tempo reale in DM non appena la approverà!')
-            .setColor('#5865F2')
+                '2️⃣ Inserisci il tuo identificativo e **scegli tramite il menu** se hai inserito il tuo **ID Rockstar (Social Club)** o il tuo **ID PSN**.\n' +
+                '3️⃣ Invia la richiesta di partecipazione sul **Social Club** e verrai approvato in automatico all\'istante!')
+            .setColor('#00439C')
             .setFooter({ text: 'Sistema protetto e anti-abuso Evren City RP' });
 
         const button = new ButtonBuilder()
-            .setCustomId('btn_richiedi_crew')
-            .setLabel('Registrati in Coda & Richiedi Crew')
+            .setCustomId('btn_apri_modal')
+            .setLabel('Inserisci ID e Mettiti in Coda')
             .setStyle(ButtonStyle.Primary)
-            .setEmoji('⚡');
+            .setEmoji('🎮');
 
         await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
-        return interaction.reply({ content: 'Pannello informativo inviato con successo!', flags: [MessageFlags.Ephemeral] });
+        return interaction.reply({ content: 'Pannello inviato con successo!', flags: [MessageFlags.Ephemeral] });
     }
 
-    if (interaction.isButton() && interaction.customId === 'btn_richiedi_crew') {
-        const modal = new ModalBuilder().setCustomId('modal_richiesta_crew').setTitle('Evren City RP — Modulo Registrazione');
-        
-        const gameIdInput = new TextInputBuilder()
+    // 1. Apertura Modale ID
+    if (interaction.isButton() && interaction.customId === 'btn_apri_modal') {
+        const modal = new ModalBuilder()
+            .setCustomId('modal_account_id')
+            .setTitle('Registrazione ID Crew');
+
+        const idInput = new TextInputBuilder()
             .setCustomId('input_game_id')
-            .setLabel('Il tuo ID (PSN ID o Social Club ID)')
-            .setPlaceholder('Es. MarioRossi_PSN')
+            .setLabel("Il tuo ID (Rockstar Social Club o PSN)")
             .setStyle(TextInputStyle.Short)
-            .setRequired(true);
+            .setPlaceholder('Es. IlTuoNomeUtente')
+            .setRequired(true)
+            .setMaxLength(30);
 
-        const platformInput = new TextInputBuilder()
-            .setCustomId('input_platform_type')
-            .setLabel('Piattaforma (Scrivi: ps oppure pc)')
-            .setPlaceholder('ps oppure pc')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(gameIdInput),
-            new ActionRowBuilder().addComponents(platformInput)
-        );
-
-        await interaction.showModal(modal);
+        modal.addComponents(new ActionRowBuilder().addComponents(idInput));
+        return await interaction.showModal(modal);
     }
 
-    if (interaction.isModalSubmit() && interaction.customId === 'modal_richiesta_crew') {
+    // 2. Invio del Modale: Mostra il menu a tendina
+    if (interaction.isModalSubmit() && interaction.customId === 'modal_account_id') {
         const gameId = interaction.fields.getTextInputValue('input_game_id').trim();
-        const platformType = interaction.fields.getTextInputValue('input_platform_type').trim().toLowerCase();
 
-        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId(`select_type_${gameId}`)
+            .setPlaceholder('Seleziona a quale tipo appartiene il tuo ID...')
+            .addOptions(
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('ID Rockstar (Social Club)')
+                    .setDescription(`L'ID "${gameId}" è il mio nickname Rockstar`)
+                    .setValue('rockstar')
+                    .setEmoji('🌐'),
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('ID PSN (PlayStation Network)')
+                    .setDescription(`L'ID "${gameId}" è il mio ID PSN`)
+                    .setValue('psn')
+                    .setEmoji('🎮')
+            );
 
-        const existingIndex = pendingRequests.findIndex(r => r.discordUserId === interaction.user.id);
-        if (existingIndex !== -1) {
-            pendingRequests[existingIndex].gameId = gameId;
-            pendingRequests[existingIndex].platformType = platformType;
-        } else {
-            pendingRequests.push({
-                discordUserId: interaction.user.id,
-                discordUsername: interaction.user.username,
-                gameId,
-                platformType
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        return await interaction.reply({
+            content: `Hai inserito l'ID: **${gameId}**.\nSeleziona adesso dal menu sottostante se si tratta di un **ID Rockstar (Social Club)** o di un **ID PSN**:`,
+            components: [row],
+            flags: [MessageFlags.Ephemeral]
+        });
+    }
+
+    // 3. Gestione della selezione e salvataggio su Supabase
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('select_type_')) {
+        await interaction.deferUpdate();
+
+        const gameId = interaction.customId.replace('select_type_', '');
+        const accountType = interaction.values[0]; 
+
+        await interaction.editReply({
+            content: `🔍 **Verifica in corso...** Sto controllando il tuo account **${accountType.toUpperCase()}** (${gameId}) sul Social Club di Rockstar...`,
+            components: []
+        });
+
+        const isValid = await queueTask(() => verifyRockstarAccountLink(gameId, accountType));
+
+        if (!isValid) {
+            return interaction.editReply({
+                content: `❌ **Verifica Fallita:** Non è stato possibile confermare l'account **${accountType.toUpperCase()}** con l'ID **${gameId}**. Riprova a verificare di aver digitato correttamente il nome.`
             });
         }
 
-        await interaction.editReply(`✅ **Registrazione completata!** Sto verificando immediatamente se hai già inviato la richiesta sul Social Club...`);
+        // Salvataggio permanente nel database Supabase (upsert basato su discord_user_id)
+        const { error: dbError } = await supabase
+            .from('pending_requests')
+            .upsert({
+                discord_user_id: interaction.user.id,
+                discord_username: interaction.user.username,
+                game_id: gameId,
+                account_type: accountType
+            }, { onConflict: 'discord_user_id' });
 
-        // Controllo immediato iniziale
+        if (dbError) {
+            console.error("Errore salvataggio su Supabase:", dbError);
+            return interaction.editReply({ content: `❌ Si è verificato un errore di database durante il salvataggio della coda.` });
+        }
+
+        await interaction.editReply({
+            content: `✅ **Account verificato e salvato sul database!** Tipo: **${accountType.toUpperCase()}** | ID: **${gameId}**.\nSei ufficialmente in coda: controllo subito se hai inviato la richiesta alla crew!`
+        });
+
         await queueTask(() => processCrewInvites());
 
         const dmEmbedInfo = new EmbedBuilder()
-            .setTitle('📡 Stato in Tempo Reale: Registrato in Coda')
-            .setDescription(`Ciao **${interaction.user.username}**! Il tuo ID \`${gameId}\` (${platformType.toUpperCase()}) è stato registrato.\n\n` +
-                `⏳ Il bot ha appena effettuato una **verifica preliminare** sul Social Club. Se hai già inviato la richiesta di partecipazione, è stata approvata all'istante; altrimenti, rimarrà in ascolto e ti aggiornerà non appena la invierai!`)
-            .setColor('#FEE75C')
+            .setTitle('📡 Stato in Tempo Reale: In Coda (Persistente)')
+            .setDescription(`Ciao **${interaction.user.username}**! Il tuo ID **${gameId}** (${accountType.toUpperCase()}) è stato verificato ed inserito in coda sul database.\n\n` +
+                `⏳ Se hai già inviato la richiesta alla Crew, verrà approvata all'istante; altrimenti, appena la invierai sul Social Club verrai accettato automaticamente!`)
+            .setColor('#00439C')
             .setTimestamp();
 
         try {
@@ -572,17 +633,16 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
         const username = interaction.options.getString('utente');
-        const platform = interaction.options.getString('piattaforma');
         const motivo = interaction.options.getString('motivo') || 'Nessun motivo specificato';
         const action = interaction.commandName.replace('_crew', '');
 
-        const success = await queueTask(() => manageCrewMember(username, platform, action));
+        const success = await queueTask(() => manageCrewMember(username, action));
         if (success) {
             await interaction.editReply(`✅ Azione **${action.toUpperCase()}** eseguita con successo su **${username}**.`);
             
-            let logColor = '#5865F2'; 
-            let emojiAction = '⚙️';
-            if (action === 'kick') { logColor = '#fEE75C'; emojiAction = '👢'; }
+            let logColor = '#00439C'; 
+            let emojiAction = '🎮';
+            if (action === 'kick') { logColor = '#FEE75C'; emojiAction = '👢'; }
             else if (action === 'ban') { logColor = '#ED4245'; emojiAction = '🔨'; }
             else if (action === 'unban') { logColor = '#57F287'; emojiAction = '🔓'; }
             else if (action === 'promote') { logColor = '#57F287'; emojiAction = '⬆️'; }
@@ -592,8 +652,7 @@ client.on('interactionCreate', async interaction => {
                 .setTitle(`${emojiAction} LOG: ${action.toUpperCase()}`)
                 .setColor(logColor)
                 .addFields(
-                    { name: 'Utente', value: username, inline: true },
-                    { name: 'Piattaforma', value: platform.toUpperCase(), inline: true },
+                    { name: 'Utente ID', value: username, inline: true },
                     { name: 'Motivo', value: motivo, inline: false },
                     { name: 'Staff', value: `${interaction.user.tag}`, inline: false }
                 )
