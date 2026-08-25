@@ -423,7 +423,7 @@ client.on('interactionCreate', async interaction => {
                         .setDescription(
                             `Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\n` +
                             '**🎮 Cosa devi fare adesso:**\n' +
-                            `1. Torna sulla pagina della Crew cliccando qui: [Apri la Crew sul Social Club](${crewUrl})\n` +
+                            '1. Torna sulla pagina della Crew cliccando qui: [Apri la Crew sul Social Club](${crewUrl})\n` +
                             '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n` +
                             'Buon Roleplay in città! 🏙️'
                         )
