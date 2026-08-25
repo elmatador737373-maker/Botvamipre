@@ -1,13 +1,14 @@
-FROM mcr.microsoft.com/playwright:v1.41.2-jammy
+FROM mcr.microsoft.com/playwright:v1.40.0-jammy
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm ci --omit=dev
+# Sostituito ci con install
+RUN npm install --omit=dev
 
 COPY . .
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["node", "index.js"]
