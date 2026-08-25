@@ -155,7 +155,7 @@ async function autoApproveUser(username) {
     const crewManageUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`;
     console.log(`[Social Club] Apertura pagina richieste crew: ${crewManageUrl}`);
     
-    await page.goto(crewManageUrl, { waitUntil: 'networkidle2' });
+    await page.goto(crewManageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     return await page.evaluate((targetUser) => {
         const cards = Array.from(document.querySelectorAll('.invite-card'));
@@ -175,7 +175,7 @@ async function autoApproveUser(username) {
 
 async function fetchCrewMembers() {
     const membersUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/members`;
-    await page.goto(membersUrl, { waitUntil: 'networkidle2' });
+    await page.goto(membersUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     membersCache = await page.evaluate(() => {
         const cards = Array.from(document.querySelectorAll('.member-card'));
@@ -191,7 +191,7 @@ async function fetchCrewMembers() {
 
 async function fetchBannedMembers() {
     const bannedUrl = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/banned`;
-    await page.goto(bannedUrl, { waitUntil: 'networkidle2' });
+    await page.goto(bannedUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     bannedCache = await page.evaluate(() => {
         const cards = Array.from(document.querySelectorAll('.banned-card, .member-card'));
@@ -214,7 +214,7 @@ async function manageCrewMember(username, platform, action = 'kick') {
     }
 
     if (page.url() !== targetUrl) {
-        await page.goto(targetUrl, { waitUntil: 'networkidle2' });
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     }
 
     return await page.evaluate((targetUser, targetPlatform, actionType) => {
@@ -361,7 +361,8 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
         try {
-            await page.goto('https://socialclub.rockstargames.com/', { waitUntil: 'networkidle2', timeout: 30000 });
+            await page.goto('https://socialclub.rockstargames.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await sleep(3000);
             
             const loggedUsername = await page.evaluate(() => {
                 const profileEl = document.querySelector('.profile-name, [data-analytics-action="Profile"], .user-name');
@@ -460,9 +461,9 @@ client.on('interactionCreate', async interaction => {
                         .setTitle('✅ Richiesta Approvata — Evren City RP')
                         .setDescription(
                             `Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\n` +
-                            '**🎮 Cosa devi fare adesso:**\n`' +
+                            '**🎮 Cosa devi fare adesso:**\n' +
                             `1. Torna sulla pagina della Crew cliccando qui: [Apri la Crew sul Social Club](${crewUrl})\n` +
-                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n` +
+                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n' +
                             'Buon Roleplay in città! 🏙️'
                         )
                         .setColor('#2ecc71');
