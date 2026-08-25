@@ -22,17 +22,24 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('Evren City RP - Crew Manager Bot Online (Playwright Full Action Edition)!');
+    res.send('Evren City RP - Crew Manager Bot Online (Anti-Ban & Strict Standby Edition)!');
 });
 
 app.listen(PORT, () => {
     console.log(`[Evren City] Server HTTP avviato sulla porta ${PORT}`);
 });
 
-// --- 2. GESTIONE CODA & COOLDOWN ---
+// --- 2. GESTIONE CODA & ANTI-BAN (RITARDI SICURE) ---
 const taskQueue = [];
 let isProcessingQueue = false;
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Funzione di attesa randomizzata per simulare un utente reale ed evitare ban
+const randomSleep = (min = 3000, max = 7000) => {
+    const ms = Math.floor(Math.random() * (max - min + 1)) + min;
+    return new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+const pendingRequests = []; 
 
 function queueTask(taskFunction) {
     return new Promise((resolve, reject) => {
@@ -46,7 +53,7 @@ async function processQueue() {
     isProcessingQueue = true;
     const { taskFunction, resolve, reject } = taskQueue.shift();
     try {
-        await sleep(3000);
+        await randomSleep(4000, 7000); // Ritardo anti-ban tra le attività
         const result = await taskFunction();
         resolve(result);
     } catch (error) {
@@ -57,7 +64,7 @@ async function processQueue() {
     }
 }
 
-// --- 3. CLIENT DISCORD & PLAYWRIGHT HELPER ---
+// --- 3. CLIENT DISCORD & PLAYWRIGHT CON ANTI-BAN ---
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds,
@@ -72,14 +79,31 @@ let bannedCache = [];
 async function getAuthenticatedPage() {
     const browser = await chromium.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-blink-features=AutomationControlled', // Nasconde Playwright
+            '--disable-infobars',
+            '--window-size=1920,1080'
+        ]
     });
     
     const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        viewport: { width: 1920, height: 1080 },
+        deviceScaleFactor: 1,
+        locale: 'it-IT',
+        timezoneId: 'Europe/Rome'
     });
 
-    // Inserimento diretto dei cookie in formato Playwright
+    // Iniezione di script Anti-Detection (Bypass Cloudflare / Rilevamento Bot)
+    await context.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        window.navigator.chrome = { runtime: {} };
+        Object.defineProperty(navigator, 'languages', { get: () => ['it-IT', 'it', 'en-US', 'en'] });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    });
+
     await context.addCookies([
       {
         "name": "_ga_PJQ2JYZDQC",
@@ -113,7 +137,7 @@ async function getAuthenticatedPage() {
       },
       {
         "name": "BearerToken",
-        "value": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjdmNmQwNDRlLTBmNGMtNGM3ZS04NDk0LWUyYzBkZWM1YWE4ZiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiIzMDYxODk5MjUiLCJyb2Nrc3RhckF1dGguUnVpZCI6IjEyNDgwZTE4ZDQyODQwNjg4N2JiNTQxYjk4OTE4MTUzIiwianRpIjoiYjQ2NTI5N2EtNTQ5ZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcE1lU2lnbmVkSW4iOiJUcnVlIiwic2NBdXRoLlRva2VuU3RvcmFnZVR0bCI6IjI1OTIwMDAiLCJzY0F1dGguSXNBTWlub3IiOiJGYWxzZSIsInNjQXV0aC5OaWNrbmFtZSI6IkV2cmVuTWFuYWdlbWVudCIsInNjQXV0aC5BdmF0YXJVcmwiOiJodHRwczovL3Byb2QtYXZhdGFycy5ha2FtYWl6ZWQubmV0L3N0b2NrLWF2YXRhcnMvbi9HVEFWL2d0YXYwMi5wbmciLCJzY0F1dGguSXNFbWFpbFZlcmlmaWVkIjoiVHJ1ZSIsInNjQXV0aC5NZW1iZXJTaW5jZSI6IjIwMjYtMDgtMjVUMTQ6NTQ6NTIuNzYwMDAwMFoiLCJuYmYiOjE3ODc2NzQyNjIsImF1ZCI6WyJodHRwczovL3d3dy5yb2Nrc3RhcmdhbWVzLmNvbSIsImh0dHBzOi8vc2NhcGkucm9ja3N0YXJnYW1lcy5jb20iLCJyb2Nrc3RhcnNlcnZpY2VzIl0sInNjb3BlIjoic2NhcGk6KiBzY3M6dXBkYXRlUHJvZmlsZSIsImV4cCI6MTc4NzY3NDU2MiwiaWF0IjoxNzg3Njc0MjYyLCJpc3MiOiJodHRwczovL3NpZ25pbi5yb2Nrc3RhcmdhbWVzLmNvbSJ9.svrC9Xtq90V0b3eJg6WmEGZDnjtzs5TYGGk0f92Yg4DdNTd0qgKMPsLyZKbwtxgUDJND2C4z_kgvO4jBgZLvQfMnjdA3qt-C710obeAnQQ15KuAZvBmj5qc5I84bYF8wqqr_gbJAk2Iy8GTy7jJmcWScdEiQgGTJvoKTtRExuIKyK9VBbO1GKwYkPeJyWSEWueFo90GgWHIDL1JY7OfQvInV39uzEZ0yzh-Aao3ExCiKPgIWeV7qNvTSd6dNgfem6DizclImXkRXeA1z8ZT4f1kDuZRgAKogUbWEKXBn5KHqAePBdjgAMALW9RKuHQOJweSvhfYcpEdT0xJ0pOoT2A",
+        "value": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjdmNmQwNDRlLTBmNGMtNGM3ZS04NDk0LWUyYzBkZWM1YWE4ZiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiIzMDYxODk5MjUiLCJyb2Nrc3RhckF1dGguUnVpZCI6IjEyNDgwZTE4ZDQyODQwNjg4N2JiNTQxYjk4OTE4MTUzIiwianRpIjoiYjQ2NTI5N2EtNTQ5ZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcE1lU2lnbmVkSW4iOiJUcnVlIiwic2NBdXRoLlRva2VuU3RvcmFnZVR0bCI6IjI1OTIwMDAiLCJzY0F1dGguSXNBTWlub3IiOiJGYWxzZSIsInNjQXV0aC5OaWNrbmFtZSI6IkV2cmVuTWFuYWdlbWVudCIsInNjQXV0aC5BdmF0YXJVcmwiOiJodHRwczovL3Byb2QtYXZhdGFycy5ha2FtYWl6ZWQubmV0L3N0b2NrLWF2YXRhcnMvbi9HVEFWL2d0YXYwMi5wbmciLCJzY0F1dGguSXNFbWFpbFZlcmlmaWVkIjoiVHJ1ZSIsInNjQXV0aC5NZW1iZXJTaW5jZSI6IjIwMjYtMDgtMjVUMTQ6NTQ6NTIuNzYwMDAwMFoiLCJuYmYiOjE3ODc2NzQyNjIsImF1ZCI6WyJodHRwczovL3d3dy5yb2Nrc3RhcmdhbWVzLmNvbSIsImh0dHBzOi8vc2NhcGkucm9ja3N0YXJnYW1lcy5jb20iLCJyb2Nrc3RhcnNlcnZpY2VzIl0sInNjb3BlIjoic2NhcGk6KiBzY3M6dXBkYXRlUHJvZmlsZSIsImV4cCI6MTc4NzY3NDU2MiwiaWF0IjoxNzg3Njc0MjYyLCJpc3MiOiJodHRwczovLw==",
         "domain": "www.rockstargames.com",
         "path": "/"
       },
@@ -160,13 +184,13 @@ async function sendLogMessage(embed) {
     }
 }
 
-// --- 4. FUNZIONI SOCIAL CLUB (PLAYWRIGHT) ---
+// --- 4. FUNZIONI SOCIAL CLUB (PLAYWRIGHT + ANTI-BAN) ---
 
 async function verifyLogin() {
     const { browser, page } = await getAuthenticatedPage();
     try {
         await page.goto('https://socialclub.rockstargames.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForTimeout(4000); 
+        await randomSleep(3000, 5000); 
 
         const profileInfo = await page.evaluate(() => {
             const cookies = document.cookie;
@@ -189,7 +213,7 @@ async function fetchCrewMembers() {
     const { browser, page } = await getAuthenticatedPage();
     try {
         await page.goto(`https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/members`, { waitUntil: 'networkidle', timeout: 30000 });
-        await page.waitForTimeout(3000);
+        await randomSleep(2000, 4000);
         
         const members = await page.evaluate(() => {
             const rows = document.querySelectorAll('.member-row, tr, [data-member-name]');
@@ -218,7 +242,7 @@ async function fetchBannedMembers() {
     const { browser, page } = await getAuthenticatedPage();
     try {
         await page.goto(`https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/banned`, { waitUntil: 'networkidle', timeout: 30000 });
-        await page.waitForTimeout(3000);
+        await randomSleep(2000, 4000);
         return bannedCache;
     } catch (e) {
         console.error("Errore fetch bannati Playwright:", e);
@@ -228,41 +252,120 @@ async function fetchBannedMembers() {
     }
 }
 
-async function autoApproveUser(gameId, platformType) {
+// Controllo rigoroso richieste in sospeso (con filtri anti-ban e simulazione movimento umano)
+async function processCrewInvites() {
     const { browser, page } = await getAuthenticatedPage();
     try {
         await page.goto(`https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`, { waitUntil: 'networkidle', timeout: 30000 });
-        await page.waitForTimeout(4000);
+        await randomSleep(3000, 5000);
 
-        const approved = await page.evaluate((targetId) => {
+        const webRequests = await page.evaluate(() => {
             const rows = document.querySelectorAll('tr, .member-row, [data-member-row], div');
-            for (let row of rows) {
+            let list = [];
+            rows.forEach(row => {
                 const text = row.innerText || '';
-                if (text.toLowerCase().includes(targetId.toLowerCase())) {
-                    const acceptBtn = row.querySelector('button.accept, button.approve, [data-action="accept"], button:not(.reject):not(.deny)');
-                    if (acceptBtn) {
-                        acceptBtn.click();
-                        return true;
-                    }
+                const acceptBtn = row.querySelector('button.accept, button.approve, [data-action="accept"], button:not(.reject):not(.deny)');
+                if (acceptBtn) {
+                    list.push(text.trim());
                 }
-            }
-            return false;
-        }, gameId);
+            });
+            return list;
+        });
 
-        if (approved) {
-            await page.waitForTimeout(3000);
-            return true;
+        if (!webRequests || webRequests.length === 0) return;
+
+        for (let reqText of webRequests) {
+            const matchedUserIndex = pendingRequests.findIndex(p => reqText.toLowerCase().includes(p.gameId.toLowerCase()));
+
+            if (matchedUserIndex !== -1) {
+                // Utente autorizzato tramite pannello -> Approvazione sicura
+                const reqData = pendingRequests[matchedUserIndex];
+                console.log(`[Standby Watcher] Richiesta autorizzata trovata per: ${reqData.gameId}`);
+
+                const approved = await page.evaluate((targetId) => {
+                    const rows = document.querySelectorAll('tr, .member-row, [data-member-row], div');
+                    for (let row of rows) {
+                        if ((row.innerText || '').toLowerCase().includes(targetId.toLowerCase())) {
+                            const btn = row.querySelector('button.accept, button.approve, [data-action="accept"], button:not(.reject):not(.deny)');
+                            if (btn) { btn.click(); return true; }
+                        }
+                    }
+                    return false;
+                }, reqData.gameId);
+
+                if (approved) {
+                    await randomSleep(3000, 5000);
+                    pendingRequests.splice(matchedUserIndex, 1);
+
+                    const crewLink = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}`;
+                    const dmEmbedSuccess = new EmbedBuilder()
+                        .setTitle('✅ Richiesta Crew Approvata!')
+                        .setDescription(`Ciao **${reqData.discordUsername}**, il bot ha rilevato la tua richiesta sul Social Club e l'ha approvata con successo!`)
+                        .addFields(
+                            { name: '🆔 ID Riconosciuto', value: `\`${reqData.gameId}\``, inline: true },
+                            { name: '🎮 Piattaforma', value: `\`${reqData.platformType.toUpperCase()}\``, inline: true },
+                            { name: '📌 Ultimo Passo', value: `Ora per completare l'ingresso **torna sul link della crew ed accetta l'invito**:\n🔗 [Clicca qui per aprire la Crew](${crewLink})`, inline: false }
+                        )
+                        .setColor('#57F287')
+                        .setTimestamp();
+
+                    try {
+                        const user = await client.users.fetch(reqData.discordUserId);
+                        await user.send({ embeds: [dmEmbedSuccess] });
+                    } catch (err) {
+                        console.error("Impossibile inviare DM all'utente:", err);
+                    }
+
+                    await sendLogMessage(new EmbedBuilder()
+                        .setTitle('🟢 LOG: Richiesta Crew Approvata')
+                        .setColor('#57F287')
+                        .addFields(
+                            { name: 'Utente Discord', value: `${reqData.discordUsername} (<@${reqData.discordUserId}>)`, inline: false },
+                            { name: 'ID Riconosciuto', value: reqData.gameId, inline: true },
+                            { name: 'Piattaforma', value: reqData.platformType.toUpperCase(), inline: true }
+                        )
+                        .setTimestamp()
+                    ).catch(() => {});
+                }
+
+            } else {
+                // Richiesta estranea non passata da Discord -> Rifiuto automatico protetto
+                console.log(`[Standby Watcher] Richiesta non autorizzata. Rifiuto in corso...`);
+                
+                await page.evaluate(() => {
+                    const rows = document.querySelectorAll('tr, .member-row, [data-member-row], div');
+                    for (let row of rows) {
+                        const rejectBtn = row.querySelector('button.reject, button.deny, [data-action="reject"], button.kick');
+                        if (rejectBtn) {
+                            rejectBtn.click();
+                        }
+                    }
+                });
+                await randomSleep(2000, 4000);
+
+                await sendLogMessage(new EmbedBuilder()
+                    .setTitle('🔴 LOG: Richiesta Crew Rifiutata (Non registrato su Discord)')
+                    .setColor('#ED4245')
+                    .setDescription(`Il bot ha trovato una richiesta sul Social Club non associata ad alcun utente in coda sul pannello Discord ed è stata rifiutata automaticamente.`)
+                    .setTimestamp()
+                ).catch(() => {});
+            }
         }
-        return false;
     } catch (e) {
-        console.error("Errore approvazione automatica:", e);
-        return false;
+        console.error("Errore nel ciclo di controllo richieste:", e);
     } finally {
         await browser.close();
     }
 }
 
-// Funzione REALE per gestire Kick, Ban, Unban, Promote e Demote su Playwright
+// Background Worker Anti-Ban per il Polling (intervallo di 90 secondi per non insospettire Rockstar)
+async function startPendingWatcher() {
+    setInterval(async () => {
+        await queueTask(() => processCrewInvites());
+    }, 90000); 
+}
+
+// Gestione comandi staff (Kick, Ban, Unban, Promote, Demote con anti-ban integrato)
 async function manageCrewMember(username, platform, action = 'kick') {
     const { browser, page } = await getAuthenticatedPage();
     try {
@@ -271,7 +374,7 @@ async function manageCrewMember(username, platform, action = 'kick') {
             : `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/members`;
 
         await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 });
-        await page.waitForTimeout(4000);
+        await randomSleep(3000, 5000);
 
         const executed = await page.evaluate(({ targetUser, actionType }) => {
             const rows = document.querySelectorAll('tr, .member-row, [data-member-row], div');
@@ -300,7 +403,6 @@ async function manageCrewMember(username, platform, action = 'kick') {
                         if (btn) { btn.click(); return true; }
                     }
 
-                    // Fallback generico su qualsiasi pulsante d'azione se non trova classi specifiche
                     const genericBtn = row.querySelector('button');
                     if (genericBtn) {
                         genericBtn.click();
@@ -312,22 +414,19 @@ async function manageCrewMember(username, platform, action = 'kick') {
         }, { targetUser: username, actionType: action });
 
         if (executed) {
-            await page.waitForTimeout(3000); // Attende la conferma del server Rockstar
-            console.log(`[Playwright] Azione ${action} eseguita con successo su ${username}`);
+            await randomSleep(3000, 5000);
             return true;
         }
-
-        console.log(`[Playwright] Utente ${username} non trovato o pulsante non cliccabile per ${action}`);
         return false;
     } catch (e) {
-        console.error(`Errore esecuzione ${action} con Playwright:`, e);
+        console.error(`Errore esecuzione ${action}:`, e);
         return false;
     } finally {
         await browser.close();
     }
 }
 
-// --- 5. COMANDI DISCORD (STAFF + AUTOCOMPLETE) ---
+// --- 5. COMANDI DISCORD ---
 
 const setupCommand = new SlashCommandBuilder().setName('setup_pannello').setDescription('[STAFF] Invia pannello Crew');
 const testLoginCommand = new SlashCommandBuilder().setName('test_login').setDescription('[STAFF] Test login Playwright');
@@ -338,43 +437,14 @@ const choicesPiattaforma = [
     { name: 'PlayStation', value: 'ps' }
 ];
 
-const kickCommand = new SlashCommandBuilder()
-    .setName('kick_crew')
-    .setDescription('[STAFF] Espelli utente')
-    .addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma))
-    .addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true))
-    .addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
-
-const banCommand = new SlashCommandBuilder()
-    .setName('ban_crew')
-    .setDescription('[STAFF] Banna utente')
-    .addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma))
-    .addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true))
-    .addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
-
-const unbanCommand = new SlashCommandBuilder()
-    .setName('unban_crew')
-    .setDescription('[STAFF] Sblocca utente')
-    .addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma))
-    .addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true))
-    .addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
-
-const promoteCommand = new SlashCommandBuilder()
-    .setName('promote_crew')
-    .setDescription('[STAFF] Promuovi utente nella Crew')
-    .addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma))
-    .addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true))
-    .addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
-
-const demoteCommand = new SlashCommandBuilder()
-    .setName('demote_crew')
-    .setDescription('[STAFF] Degrada utente nella Crew')
-    .addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma))
-    .addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true))
-    .addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
+const kickCommand = new SlashCommandBuilder().setName('kick_crew').setDescription('[STAFF] Espelli utente').addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma)).addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
+const banCommand = new SlashCommandBuilder().setName('ban_crew').setDescription('[STAFF] Banna utente').addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma)).addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
+const unbanCommand = new SlashCommandBuilder().setName('unban_crew').setDescription('[STAFF] Sblocca utente').addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma)).addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
+const promoteCommand = new SlashCommandBuilder().setName('promote_crew').setDescription('[STAFF] Promuovi utente').addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma)).addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
+const demoteCommand = new SlashCommandBuilder().setName('demote_crew').setDescription('[STAFF] Degrada utente').addStringOption(o => o.setName('piattaforma').setDescription('Piattaforma').setRequired(true).addChoices(...choicesPiattaforma)).addStringOption(o => o.setName('utente').setDescription('Utente').setRequired(true).setAutocomplete(true)).addStringOption(o => o.setName('motivo').setDescription('Motivo').setRequired(false));
 
 client.once('clientReady', async () => {
-    console.log(`[Evren City] Bot connesso come ${client.user.tag} (Playwright Full Action Edition)`);
+    console.log(`[Evren City] Bot connesso come ${client.user.tag} (Anti-Ban Protected Edition)`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(Routes.applicationCommands(client.user.id), { 
         body: [
@@ -388,6 +458,8 @@ client.once('clientReady', async () => {
         ] 
     });
     console.log("[Evren City] Tutti i comandi sono stati registrati con successo!");
+    
+    startPendingWatcher();
 });
 
 client.on('interactionCreate', async interaction => {
@@ -409,36 +481,35 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isChatInputCommand() && interaction.commandName === 'test_login') {
-        if (!checkStaff(interaction.member)) return interaction.reply({ content: '❌ Non sei autorizzato ad usare questo comando.', flags: [MessageFlags.Ephemeral] });
+        if (!checkStaff(interaction.member)) return interaction.reply({ content: '❌ Non sei autorizzato.', flags: [MessageFlags.Ephemeral] });
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-
         const result = await verifyLogin();
         if (result) {
-            await interaction.editReply(`✅ **[Playwright] Login VERIFICATO con successo!** Profilo: **${result}**`);
+            await interaction.editReply(`✅ **[Playwright] Login VERIFICATO!** Profilo: **${result}**`);
         } else {
-            await interaction.editReply(`⚠️ **[Playwright] Attenzione:** Cookie scaduti o non validi.`);
+            await interaction.editReply(`⚠️ **[Playwright] Attenzione:** Cookie scaduti.`);
         }
         return;
     }
 
     if (interaction.isChatInputCommand() && interaction.commandName === 'setup_pannello') {
-        if (!checkStaff(interaction.member)) return interaction.reply({ content: '❌ Non sei autorizzato ad usare questo comando.', flags: [MessageFlags.Ephemeral] });
+        if (!checkStaff(interaction.member)) return interaction.reply({ content: '❌ Non sei autorizzato.', flags: [MessageFlags.Ephemeral] });
         const embed = new EmbedBuilder()
             .setTitle('🏙️ EVREN CITY RP — Gestione Crew Ufficiale')
-            .setDescription('Clicca il pulsante sottostante per inviare la richiesta di approvazione automatica nella Crew inserendo il tuo ID di gioco!')
+            .setDescription('Clicca il pulsante sottostante per registrare il tuo ID e metterti in attesa dell\'approvazione automatica!')
             .setColor('#2b2d31');
-        const button = new ButtonBuilder().setCustomId('btn_richiedi_crew').setLabel('Richiedi Approvazione Crew').setStyle(ButtonStyle.Primary).setEmoji('⚡');
+        const button = new ButtonBuilder().setCustomId('btn_richiedi_crew').setLabel('Registrati in Coda Crew').setStyle(ButtonStyle.Primary).setEmoji('⚡');
         await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
-        return interaction.reply({ content: 'Pannello inviato con successo!', flags: [MessageFlags.Ephemeral] });
+        return interaction.reply({ content: 'Pannello inviato!', flags: [MessageFlags.Ephemeral] });
     }
 
     if (interaction.isButton() && interaction.customId === 'btn_richiedi_crew') {
-        const modal = new ModalBuilder().setCustomId('modal_richiesta_crew').setTitle('Evren City RP — Verifica ID Crew');
+        const modal = new ModalBuilder().setCustomId('modal_richiesta_crew').setTitle('Evren City RP — Registrazione Coda');
         
         const gameIdInput = new TextInputBuilder()
             .setCustomId('input_game_id')
             .setLabel('Il tuo ID (es. PSN ID o Social Club ID)')
-            .setPlaceholder('Es. MarioRossi_99 o EvrenPlayer')
+            .setPlaceholder('Es. MarioRossi_99')
             .setStyle(TextInputStyle.Short)
             .setRequired(true);
 
@@ -462,53 +533,26 @@ client.on('interactionCreate', async interaction => {
         const platformType = interaction.fields.getTextInputValue('input_platform_type').trim().toLowerCase();
 
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-        await interaction.editReply('⏳ Ricerca ed approvazione della richiesta in corso...');
 
-        const success = await queueTask(() => autoApproveUser(gameId, platformType));
-
-        if (success) {
-            const crewLink = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}`;
-
-            const dmEmbedSuccess = new EmbedBuilder()
-                .setTitle('✅ Richiesta Crew Approvata!')
-                .setDescription(`Ciao **${interaction.user.username}**, la tua richiesta per entrare nella Crew di Evren City RP è stata accettata dal sistema!`)
-                .addFields(
-                    { name: '🆔 ID Riconosciuto', value: `\`${gameId}\``, inline: true },
-                    { name: '🎮 Piattaforma', value: `\`${platformType.toUpperCase()}\``, inline: true },
-                    { name: '📌 Ultimo Passo', value: `La tua richiesta è stata approvata. Ora per completare l'ingresso **torna sul link della crew ed accetta l'invito**:\n🔗 [Clicca qui per aprire la Crew](${crewLink})`, inline: false }
-                )
-                .setColor('#57F287')
-                .setTimestamp();
-
-            await interaction.user.send({ embeds: [dmEmbedSuccess] }).catch(() => {});
-            await interaction.editReply(`✅ Richiesta approvata! Ti è stato inviato un messaggio privato (DM) con il link per accettare l'invito.`);
-
-            await sendLogMessage(new EmbedBuilder()
-                .setTitle('🟢 LOG: Richiesta Crew Approvata')
-                .setColor('#57F287')
-                .addFields(
-                    { name: 'Utente Discord', value: `${interaction.user.tag} (<@${interaction.user.id}>)`, inline: false },
-                    { name: 'ID Riconosciuto', value: gameId, inline: true },
-                    { name: 'Piattaforma', value: platformType.toUpperCase(), inline: true }
-                )
-                .setTimestamp()
-            ).catch(() => {});
-
+        const existing = pendingRequests.find(r => r.discordUserId === interaction.user.id);
+        if (existing) {
+            existing.gameId = gameId;
+            existing.platformType = platformType;
         } else {
-            const dmEmbedError = new EmbedBuilder()
-                .setTitle('❌ Errore Approvazione Crew')
-                .setDescription(`Non è stata trovata alcuna richiesta in sospeso per l'ID: \`${gameId}\`. Assicurati di aver prima inviato la richiesta di iscrizione dal sito di Rockstar Social Club e che il nickname sia corretto.`)
-                .setColor('#ED4245')
-                .setTimestamp();
-
-            await interaction.user.send({ embeds: [dmEmbedError] }).catch(() => {});
-            await interaction.editReply(`❌ Impossibile trovare la richiesta o approvarla automaticamente. Controlla i tuoi messaggi privati per maggiori dettagli.`);
+            pendingRequests.push({
+                discordUserId: interaction.user.id,
+                discordUsername: interaction.user.username,
+                gameId,
+                platformType
+            });
         }
+
+        await interaction.editReply(`⏳ **Sei in modalità Standby protetta!**\nIl tuo ID (\`${gameId}\`) è stato registrato. Ora vai sul sito di Rockstar Social Club e invia la richiesta di partecipazione alla Crew. Appena la invierai, il sistema la intercetterà, **la approverà** e ti invierà il link in privato!`);
     }
 
     const crewActions = ['kick_crew', 'ban_crew', 'unban_crew', 'promote_crew', 'demote_crew'];
     if (interaction.isChatInputCommand() && crewActions.includes(interaction.commandName)) {
-        if (!checkStaff(interaction.member)) return interaction.reply({ content: '❌ Non sei autorizzato ad usare questo comando.', flags: [MessageFlags.Ephemeral] });
+        if (!checkStaff(interaction.member)) return interaction.reply({ content: '❌ Non sei autorizzato.', flags: [MessageFlags.Ephemeral] });
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
         const username = interaction.options.getString('utente');
@@ -518,7 +562,7 @@ client.on('interactionCreate', async interaction => {
 
         const success = await queueTask(() => manageCrewMember(username, platform, action));
         if (success) {
-            await interaction.editReply(`✅ Azione **${action.toUpperCase()}** eseguita con successo su **${username}** tramite Playwright.`);
+            await interaction.editReply(`✅ Azione **${action.toUpperCase()}** eseguita con successo su **${username}**.`);
             
             let logColor = '#5865F2'; 
             let emojiAction = '⚙️';
@@ -541,7 +585,7 @@ client.on('interactionCreate', async interaction => {
 
             await sendLogMessage(logEmbed).catch(() => {});
         } else {
-            await interaction.editReply(`❌ Impossibile completare l'azione **${action.toUpperCase()}** su **${username}** (Utente non trovato o errore nel pannello).`);
+            await interaction.editReply(`❌ Impossibile completare l'azione **${action.toUpperCase()}** su **${username}**.`);
         }
     }
 });
