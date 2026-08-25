@@ -112,24 +112,7 @@ async function initSocialClub() {
         console.error("⚠️ CRITICO: Cookie non trovati né nelle variabili d'ambiente (COOKIES_JSON) né su file locale!");
     }
 
-    // VERIFICA DEL LOGIN SUBITO DOPO L'AVVIO
-    try {
-        console.log("[Social Club] Controllo stato di autenticazione sul Social Club...");
-        await page.goto(`https://socialclub.rockstargames.com/`, { waitUntil: 'networkidle2', timeout: 45000 });
-        
-        const loggedUsername = await page.evaluate(() => {
-            const profileEl = document.querySelector('.profile-name, [data-analytics-action="Profile"], .user-name');
-            return profileEl ? profileEl.textContent.trim() : null;
-        });
-
-        if (loggedUsername) {
-            console.log(`✅ [Social Club] Login riuscito con successo! Account attivo: ${loggedUsername}`);
-        } else {
-            console.log("⚠️ [Social Club] ATTENZIONE: Impossibile rilevare il nome utente. I cookie potrebbero essere scaduti o non validi.");
-        }
-    } catch (err) {
-        console.error("⚠️ [Social Club] Errore durante la verifica iniziale della pagina:", err.message);
-    }
+    console.log("✅ [Social Club] Setup iniziale completato. Pronto a ricevere richieste!");
 }
 
 // --- FUNZIONE PER SPEDIRE LOG NEL CANALE DEDICATO ---
@@ -261,6 +244,10 @@ const setupCommand = new SlashCommandBuilder()
     .setName('setup_pannello')
     .setDescription('[STAFF EVREN CITY] Invia il pannello per l\'ingresso nella Crew');
 
+const testLoginCommand = new SlashCommandBuilder()
+    .setName('test_login')
+    .setDescription('[STAFF EVREN CITY] Verifica se il bot è loggato correttamente su Social Club');
+
 const choicesPiattaforma = [
     { name: 'Tutte le Piattaforme', value: 'all' },
     { name: 'PC', value: 'pc' },
@@ -298,7 +285,7 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(
         Routes.applicationCommands(client.user.id), 
-        { body: [setupCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(), unbanCommand.toJSON()] }
+        { body: [setupCommand.toJSON(), testLoginCommand.toJSON(), kickCommand.toJSON(), banCommand.toJSON(), unbanCommand.toJSON()] }
     );
     console.log("[Evren City] Comandi registrati!");
 });
@@ -346,6 +333,39 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
+    if (interaction.isChatInputCommand() && interaction.commandName === 'test_login') {
+        if (!checkStaffPermission(interaction.member)) {
+            return interaction.reply({ content: '❌ Non hai i permessi necessari.', flags: [MessageFlags.Ephemeral] });
+        }
+
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+        try {
+            await page.goto('https://socialclub.rockstargames.com/', { waitUntil: 'networkidle2', timeout: 30000 });
+            
+            const loggedUsername = await page.evaluate(() => {
+                const profileEl = document.querySelector('.profile-name, [data-analytics-action="Profile"], .user-name');
+                return profileEl ? profileEl.textContent.trim() : null;
+            });
+
+            if (loggedUsername) {
+                await interaction.editReply({
+                    content: `✅ **[Social Club] Login VERIFICATO!** Il bot è correttamente autenticato come: **${loggedUsername}**`
+                });
+            } else {
+                await interaction.editReply({
+                    content: `⚠️ **[Social Club] Attenzione:** La pagina si è aperta, ma **non riesco a trovare il nome utente**. I cookie potrebbero essere scaduti o non validi.`
+                });
+            }
+        } catch (err) {
+            console.error("Errore test login:", err);
+            await interaction.editReply({
+                content: `❌ **[Social Club] Errore di connessione:** Impossibile caricare la pagina (${err.message}).`
+            });
+        }
+        return;
+    }
+
     if (interaction.isChatInputCommand() && interaction.commandName === 'setup_pannello') {
         if (!checkStaffPermission(interaction.member)) {
             return interaction.reply({ content: '❌ Non hai il ruolo Staff necessario per usare questo comando.', flags: [MessageFlags.Ephemeral] });
@@ -354,12 +374,12 @@ client.on('interactionCreate', async interaction => {
         const embed = new EmbedBuilder()
             .setTitle('🏙️ EVREN CITY RP — Gestione Crew Ufficiale')
             .setDescription(
-                `Benvenuto nella gestione automatica della Crew Ufficiale di **Evren City RP**!\n\n` +
-                `**Istruzioni per l'ingresso:**\n` +
-                `1️⃣ Vai sul Social Club di Rockstar o in-game e invia la richiesta alla nostra Crew.\n` +
-                `2️⃣ Clicca sul pulsante **"Richiedi Approvazione"** qui sotto.\n` +
-                `3️⃣ Inserisci il tuo nickname preciso del Social Club.\n\n` +
-                `*Il sistema elaborerà la tua richiesta e ti notificherà lo stato direttamente in Messaggio Privato (DM).*`
+                'Benvenuto nella gestione automatica della Crew Ufficiale di **Evren City RP**!\n\n' +
+                '**Istruzioni per l\'ingresso:**\n' +
+                '1️⃣ Vai sul Social Club di Rockstar o in-game e invia la richiesta alla nostra Crew.\n' +
+                '2️⃣ Clicca sul pulsante **"Richiedi Approvazione"** qui sotto.\n' +
+                '3️⃣ Inserisci il tuo nickname preciso del Social Club.\n\n' +
+                '*Il sistema elaborerà la tua richiesta e ti notificherà lo stato direttamente in Messaggio Privato (DM).*'
             )
             .setColor('#2b2d31')
             .setFooter({ text: 'Evren City RP — Automation Bot' });
@@ -420,10 +440,10 @@ client.on('interactionCreate', async interaction => {
                         .setTitle('✅ Richiesta Approvata — Evren City RP')
                         .setDescription(
                             `Complimenti! Il tuo account Social Club **${scUsername}** è stato **accettato nella Crew ufficiale** di Evren City RP!\n\n` +
-                            `**🎮 Cosa devi fare adesso:**\n` +
+                            '**🎮 Cosa devi fare adesso:**\n' +
                             `1. Torna sulla pagina della Crew cliccando qui: [Apri la Crew sul Social Club](${crewUrl})\n` +
-                            `2. Accetta l'invito ufficiale (o entra in-game su GTA) per completare l'ingresso.\n\n` +
-                            `Buon Roleplay in città! 🏙️`
+                            '2. Accetta l\'invito ufficiale (o entra in-game su GTA) per completare l\'ingresso.\n\n' +
+                            'Buon Roleplay in città! 🏙️'
                         )
                         .setColor('#2ecc71');
                     await interaction.user.send({ embeds: [successEmbed] });
@@ -447,11 +467,11 @@ client.on('interactionCreate', async interaction => {
                         .setTitle('⚠️ Richiesta Non Trovata — Evren City RP')
                         .setDescription(
                             `Non siamo riusciti a trovare nessuna richiesta pendente per **${scUsername}**.\n\n` +
-                            `**⚠️ Cosa devi fare adesso:**\n` +
+                            '**⚠️ Cosa devi fare adesso:**\n' +
                             `1. Assicurati di andare sulla pagina della nostra Crew su Rockstar Social Club ([clicca qui per aprirla](${crewUrl})) o direttamente in-game.\n` +
-                            `2. Invia la richiesta per unirti/accettare l'invito.\n` +
-                            `3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n` +
-                            `4. Torna sul server Discord di Evren City e riprova a cliccare sul pulsante!`
+                            '2. Invia la richiesta per unirti/accettare l\'invito.\n`' +
+                            '3. Verifica che lo username scritto corrisponda esattamente al tuo profilo Rockstar.\n`' +
+                            '4. Torna sul server Discord di Evren City e riprova a cliccare sul pulsante!'
                         )
                         .setColor('#e74c3c');
                     await interaction.user.send({ embeds: [failEmbed] });
@@ -506,7 +526,7 @@ client.on('interactionCreate', async interaction => {
                 `• **Utente Social Club:** \`${targetUser}\`\n` +
                 `• **Piattaforma:** \`${platform.toUpperCase()}\`\n` +
                 `• **Motivo:** ${reason}\n\n` +
-                `*Questa operazione interagirà direttamente con il Social Club di Rockstar.*`
+                '*Questa operazione interagirà direttamente con il Social Club di Rockstar.*'
             )
             .setColor(colorHex);
 
