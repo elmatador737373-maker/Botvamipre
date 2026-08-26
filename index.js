@@ -26,11 +26,13 @@ app.listen(PORT, () => {
     console.log(`[Evren City] Server HTTP avviato sulla porta ${PORT}`);
 });
 
-// --- 2. GESTIONE CODA & ANTI-BAN CON SECONDI RANDOM ---
+// --- 2. GESTIONE CODA & CACHE MEMORIA PER AUTOCOMPLETE VELOCE ---
 const taskQueue = [];
 let isProcessingQueue = false;
+let cachedInvites = []; // Cache in memoria per autocomplete fulmineo
+let lastCacheUpdate = 0;
 
-const randomSleep = (min = 5000, max = 10000) => {
+const randomSleep = (min = 3000, max = 6000) => {
     const ms = Math.floor(Math.random() * (max - min + 1)) + min;
     return new Promise((resolve) => setTimeout(resolve, ms));
 };
@@ -47,7 +49,7 @@ async function processQueue() {
     isProcessingQueue = true;
     const { taskFunction, resolve, reject } = taskQueue.shift();
     try {
-        await randomSleep(5000, 9000); 
+        await randomSleep(3000, 5000); 
         const result = await taskFunction();
         resolve(result);
     } catch (error) {
@@ -68,8 +70,6 @@ const client = new Client({
         GatewayIntentBits.DirectMessages
     ] 
 });
-
-let pendingInvitesCache = [];
 
 async function getAuthenticatedPage() {
     const browser = await chromium.launch({
@@ -131,7 +131,7 @@ async function getAuthenticatedPage() {
       },
       {
         "name": "BearerToken",
-        "value": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjdmNmQwNDRlLTBmNGMtNGM3ZS04NDk0LWUyYzBkZWM1YWE4ZiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiIzMDYxODk5MjUiLCJyb2Nrc3RhckF1dGguUnVpZci6IjEyNDgwZTE4ZDQyODQwNjg4N2JiNTQxYjk4OTE4MTUzIiwianRpIjoiYjQ2NTI5N2EtNTQ5ZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZW5kSW4iOiJUcnVlIiwic2NBdXRoLlRva2VuU3RvcmFnZVR0bCI6IjI1OTIwMDAiLCJzY0F1dGguSXNBTWlub3IiOiJGYWxzZSIsInNjQXV0aC5OaWNrbmFtZSI6IkV2cmVuTWFuYWdlbWVudCIsInNjQXV0aC5BdmF0YXJVcmwiOiJodHRwczovL3Byb2QtYXZhdGFycy5ha2FtYWl6ZWQubmV0L3N0b2NrLWF2YXtvcnMvbi/HVEFWL2d0YXYwMi5wbmciLCJzY0F1dGguSXNFbWFpbFZlcmlmaWVkIjoiVHJ1ZSIsInNjQXV0aC5NZW1iZXJSinNlciI6IjIwMjYtMDgtMjVUMTQ6NTQ6NTIuNzYwMDAwMFoiLCJuYmYiOjE3ODc2NzQyNjIsImF1ZCI6WyJodHRwczovL3d3dy5yb2Nrc3RhcmdhbWVzLmNvbSIsImh0dHBzOi8vc2NhcGkucm9ja3N0YXJnYW1lcy5jb20iLCJyb2Nrc3tarHNlcnZpY2VzIl0sInNjb3BlIjoic2NhcGk6KiBzY3M6dXBkYXRlUHJvZmlsZSIsImV4cCI6MTc4NzY3NDU2MiwiaWF0IjoxNzg3Njc0MjYyLCJpc3MiOiJodHRwczovLw==",
+        "value": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjdmNmQwNDRlLTBmNGMtNGM3ZS04NDk0LWUyYzBkZWM1YWE4ZiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiIzMDYxODk5MjUiLCJyb2Nrc3tarEF1dGguUnVpZci6IjEyNDgwZTE4ZDQyODQwNjg4N2JiNTQxYjk4OTE4MTUzIiwianRpIjoiYjQ2NTI5N2EtNTQ5ZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZS00OWNjLWE2YzctYTY3YjgzMmZhNDAyIiwiY2xpZW50X2lkIjoicnNnIiwiYW1yIjpbInB3ZCJdLCJzY0F1dGguS2VlcMeMZW5kSW4iOiJUcnVlIicic2NBdXRoLlRva2VuU3RvcmFnZVR0bCI6IjI1OTIwMDAiLCJzY0F1dGguSXNBTWlub3IiOiJGYWxzZSIsInNjQXV0aC5OaWNrbmFtZSI6IkV2cmVuTWFuYWdlbWVudCIsInNjQXV0aC5BdmF0YXJVcmwiOiJodHRwczovL3Byb2QtYXZhdGFycy5ha2FtYWl6ZWQubmV0L3N0b2NrLWF2YXtvcnMvbi/HVEFWL2d0YXYwMi5wbmciLCJzY0F1dGguSXNFbWFpbFZlcmlmaWVkIjoiVHJ1ZSIsInNjQXV0aC5NZW1iJSIsInNjQXV0aC5NZW1iZXJSinNlciI6IjIwMjYtMDgtMjVUMTQ6NTQ6NTIuNzYwMDAwMFoiLCJuYmYiOjE3ODc2NzQyNjIsImF1ZCI6WyJodHRwczovL3d3dy5yb2Nrc3tarGdhbWVzLmNvbSIsImh0dHBzOi8vc2NhcGkucm9ja3N0YXJnYW1lcy5jb20iLCJyb2Nrc3tarHNlcnZpY2VzIl0sInNjb3BlIjoic2NhcGk6KiBzY3M6dXBkYXRlUHJvZmlzeCIsImV4cCI6MTc4NzY3NDU2MiwiaWF0IjoxNzg3Njc0MjYyLCJpc3MiOiJodHRwczovLw==",
         "domain": "www.rockstargames.com",
         "path": "/"
       },
@@ -178,12 +178,17 @@ async function sendLogMessage(embed) {
     }
 }
 
-// --- 4. FUNZIONI PLAYWRIGHT (GESTIONE INVANTI & RICHIESTE) ---
-async function fetchPendingInvites() {
+// --- 4. FUNZIONI PLAYWRIGHT (FETCH & AZIONI REALI) ---
+async function fetchPendingInvites(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && cachedInvites.length > 0 && (now - lastCacheUpdate < 120000)) {
+        return cachedInvites;
+    }
+
     const { browser, page } = await getAuthenticatedPage();
     try {
         await page.goto(`https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`, { waitUntil: 'networkidle', timeout: 30000 });
-        await new Promise((r) => setTimeout(r, 4000));
+        await page.waitForTimeout(3500);
 
         const invites = await page.evaluate(() => {
             const rows = document.querySelectorAll('tr, .member-row, [data-member-row], div');
@@ -193,7 +198,8 @@ async function fetchPendingInvites() {
                 if (text) {
                     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 1 && l.length < 25);
                     for (let l of lines) {
-                        if (!list.includes(l) && !l.toLowerCase().includes('accetta') && !l.toLowerCase().includes('rifiuta') && !l.toLowerCase().includes('invites')) {
+                        const low = l.toLowerCase();
+                        if (!list.includes(l) && !low.includes('accetta') && !low.includes('rifiuta') && !low.includes('invites') && !low.includes('manage')) {
                             list.push({ name: l });
                         }
                     }
@@ -202,10 +208,11 @@ async function fetchPendingInvites() {
             return list;
         });
 
-        pendingInvitesCache = invites;
-        return pendingInvitesCache;
+        cachedInvites = invites;
+        lastCacheUpdate = Date.now();
+        return cachedInvites;
     } catch (e) {
-        return pendingInvitesCache;
+        return cachedInvites;
     } finally {
         await browser.close();
     }
@@ -215,19 +222,27 @@ async function handleCrewInviteAction(username, action = 'approve') {
     const { browser, page } = await getAuthenticatedPage();
     try {
         await page.goto(`https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`, { waitUntil: 'networkidle', timeout: 30000 });
-        await new Promise((r) => setTimeout(r, 4000));
+        await page.waitForTimeout(3500);
 
         const executed = await page.evaluate(({ targetUser, actionType }) => {
-            const rows = document.querySelectorAll('tr, .member-row, [data-member-row], div');
-            for (let row of rows) {
-                const text = row.innerText || '';
+            const elements = Array.from(document.querySelectorAll('tr, div, li, article'));
+            for (let el of elements) {
+                const text = el.innerText || '';
                 if (text.toLowerCase().includes(targetUser.toLowerCase())) {
-                    if (actionType === 'approve') {
-                        const btn = row.querySelector('button.accept, button.approve, [data-action="accept"], button:not(.reject):not(.deny)');
-                        if (btn) { btn.click(); return true; }
-                    } else if (actionType === 'reject') {
-                        const btn = row.querySelector('button.reject, button.deny, [data-action="reject"], button.kick');
-                        if (btn) { btn.click(); return true; }
+                    const buttons = el.querySelectorAll('button, a[role="button"], .btn');
+                    for (let btn of buttons) {
+                        const btnText = btn.innerText.toLowerCase();
+                        if (actionType === 'approve') {
+                            if (btnText.includes('accetta') || btnText.includes('accept') || btn.classList.contains('accept') || btn.classList.contains('approve')) {
+                                btn.click();
+                                return true;
+                            }
+                        } else if (actionType === 'reject') {
+                            if (btnText.includes('rifiuta') || btnText.includes('reject') || btnText.includes('deny') || btn.classList.contains('reject') || btn.classList.contains('deny')) {
+                                btn.click();
+                                return true;
+                            }
+                        }
                     }
                 }
             }
@@ -235,11 +250,13 @@ async function handleCrewInviteAction(username, action = 'approve') {
         }, { targetUser: username, actionType: action });
 
         if (executed) {
-            await new Promise((r) => setTimeout(r, 4000));
+            await page.waitForTimeout(4000); 
+            cachedInvites = cachedInvites.filter(i => i.name.toLowerCase() !== username.toLowerCase());
             return true;
         }
         return false;
     } catch (e) {
+        console.error("Errore durante l'azione Playwright:", e);
         return false;
     } finally {
         await browser.close();
@@ -247,7 +264,6 @@ async function handleCrewInviteAction(username, action = 'approve') {
 }
 
 // --- 5. COMANDI DISCORD & REGISTRAZIONE SLASH ---
-
 const testLoginCommand = new SlashCommandBuilder().setName('test_login').setDescription('[STAFF] Test login Playwright');
 const accettaCrewCommand = new SlashCommandBuilder()
     .setName('accetta_crew')
@@ -261,7 +277,7 @@ const rifiutaCrewCommand = new SlashCommandBuilder()
 
 const vediCrewCommand = new SlashCommandBuilder()
     .setName('vedi_crew')
-    .setDescription('[STAFF] Mostra tutte le richieste pendenti della crew');
+    .setDescription('[STAFF] Mostra e aggiorna tutte le richieste pendenti della crew');
 
 client.once('clientReady', async () => {
     console.log(`[Evren City] Bot connesso come ${client.user.tag}`);
@@ -276,18 +292,19 @@ client.once('clientReady', async () => {
     });
 });
 
-// GESTIONE INTERAZIONI (AUTOCOMPLETE E COMANDI STAFF)
 client.on('interactionCreate', async interaction => {
     const checkStaff = (m) => m.roles.cache.has(process.env.ROLE_STAFF_ID) || m.permissions.has('Administrator');
 
-    // Autocomplete per i comandi staff /accetta_crew e /rifiuta_crew
     if (interaction.isAutocomplete()) {
         if (!checkStaff(interaction.member)) return interaction.respond([]);
         const focused = interaction.options.getFocused().toLowerCase();
         
-        let invites = await fetchPendingInvites();
+        let invites = cachedInvites;
+        if (invites.length === 0) {
+            invites = await fetchPendingInvites();
+        }
+
         const filtered = invites.filter(m => m.name.toLowerCase().includes(focused));
-        
         await interaction.respond(filtered.slice(0, 25).map(m => ({ name: m.name, value: m.name })));
         return;
     }
@@ -302,16 +319,15 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // Comando /vedi_crew
     if (interaction.isChatInputCommand() && interaction.commandName === 'vedi_crew') {
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
         
-        const invites = await queueTask(() => fetchPendingInvites());
+        const invites = await queueTask(() => fetchPendingInvites(true));
         const crewLink = `https://socialclub.rockstargames.com/crew/${process.env.CREW_ID}/manage/invites`;
 
         const embed = new EmbedBuilder()
             .setColor('#5865F2')
-            .setTitle('📋 Richieste Pendenti Crew')
+            .setTitle('📋 Richieste Pendenti Crew (Aggiornate)')
             .setDescription(invites.length > 0 
                 ? invites.map((inv, idx) => `**${idx + 1}.** ${inv.name}`).join('\n') 
                 : 'Nessuna richiesta pendente al momento.')
@@ -322,7 +338,6 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // Comandi /accetta_crew e /rifiuta_crew
     if (interaction.isChatInputCommand() && (interaction.commandName === 'accetta_crew' || interaction.commandName === 'rifiuta_crew')) {
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
@@ -340,7 +355,6 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.editReply({ embeds: [embed] });
 
-            // Invio Log dell'azione staff
             const logEmbed = new EmbedBuilder()
                 .setTitle(`🛠️ STAFF CREW ACTION: ${actionLabel}`)
                 .setColor(action === 'approve' ? '#57F287' : '#ED4245')
@@ -352,7 +366,7 @@ client.on('interactionCreate', async interaction => {
             await sendLogMessage(logEmbed);
 
         } else {
-            await interaction.editReply(`❌ Impossibile completare l'azione per **${username}** sul Social Club.`);
+            await interaction.editReply(`❌ Impossibile completare l'azione per **${username}** sul Social Club. Verifica che sia ancora in sospeso.`);
         }
     }
 });
